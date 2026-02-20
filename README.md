@@ -1,6 +1,6 @@
 # Canino FM
 
-Static website for **Canino FM**, built with [Astro](https://astro.build). Content is managed in **Sanity** (no code or Git required to update the site). The site is deployed on **Netlify** at [canino.fm](https://canino.fm).
+Static website for **Canino FM**, built with [Astro](https://astro.build). Content is managed in **Sanity** (no code or Git required to update the site). The site is deployed on **Netlify**. Until the custom domain is connected (Phase 5 in `docs/TASKS.md`), the site is available at the Netlify-provided URL (e.g. *sitename*.netlify.app); after that it will be at [canino.fm](https://canino.fm).
 
 This repo is the result of migrating the previous WordPress site to a static, CMS-backed setup. The original WordPress theme and reference files are kept under `docs/wp/` for reference only; they are not used in production.
 
@@ -8,11 +8,11 @@ This repo is the result of migrating the previous WordPress site to a static, CM
 
 ## For content editors: how to edit the site
 
-**You don’t need GitHub, code, or the command line.** All updates to the live site are done through **Sanity Studio**, a web-based editor.
+**You don't need GitHub, code, or the command line.** All updates to the live site are done through **Sanity Studio**, a web-based editor.
 
 ### Where to edit
 
-- **Sanity Studio URL:** *(Will be set after setup — e.g. `https://your-project.sanity.studio`)*  
+- **Sanity Studio URL:** [https://caninofm.sanity.studio](https://caninofm.sanity.studio)  
   Open this link in your browser and sign in. This is where you edit all content.
 
 ### What you can edit
@@ -23,7 +23,7 @@ This repo is the result of migrating the previous WordPress site to a static, CM
 | **Live hero** | The main video or live embed at the top of the homepage. |
 | **Archive** | Past events and shows (dates, titles, images, SoundCloud embeds). |
 | **Artists** | The A–Z list of artists. |
-| **About** | The “About” popup text and contact email. |
+| **About** | The "About" popup text and contact email. |
 
 When you **publish** changes in Sanity, the live site rebuilds automatically and updates within a few minutes. No deployment step is required from you.
 
@@ -39,7 +39,7 @@ When you **publish** changes in Sanity, the live site rebuilds automatically and
 ### What this repo is
 
 - **Stack:** Astro (static site), Sanity (headless CMS), Netlify (hosting). Package manager: **pnpm**.
-- **Build:** Astro’s default build (Vite). Content is fetched from Sanity at build time; no content is stored in the repo.
+- **Build:** Astro's default build (Vite). Content is fetched from Sanity at build time; no content is stored in the repo.
 - **Docs:** Full migration plan and decisions: **`docs/PLAN.md`**. Task breakdown and phases: **`docs/TASKS.md`**.
 
 ### Running the site locally
@@ -70,11 +70,12 @@ The site needs Sanity credentials to fetch content. **These must not be committe
 | `SANITY_API_READ_TOKEN` or `SANITY_TOKEN` | Read-only API token (Viewer) for the build. |
 | `SANITY_DATASET` | Dataset name (usually `production`). |
 
-See **“Account and service setup”** in `docs/PLAN.md` for how to create the Sanity project and tokens, and how to connect Netlify to this repo.
+See **"Account and service setup"** in `docs/PLAN.md` for how to create the Sanity project and tokens, and how to connect Netlify to this repo.
 
 ### Repo layout (after full setup)
 
 - **`src/`** — Astro pages, components, and styles (scoped CSS). Data is fetched from Sanity at build time.
+- **`cms/`** — Sanity Studio (schema, config). Run from this folder for local Studio dev or deploy to *.sanity.studio.
 - **`docs/`** — `PLAN.md` (migration plan), `TASKS.md` (phases), `EDITING.md` (content guide for admins). `docs/wp/` is the reference WordPress theme (canino24), not used in the build.
 - **`.env.example`** — Example env vars; no real secrets. Actual secrets live only in Netlify (and locally in `.env` if you develop).
 
@@ -92,4 +93,4 @@ See **“Account and service setup”** in `docs/PLAN.md` for how to create the 
 
 ---
 
-*Implementation follows the plan in `docs/PLAN.md`. Account and service setup: see “Account and service setup” in that document.*
+*Implementation follows the plan in `docs/PLAN.md`. Account and service setup: see "Account and service setup" in that document.*
