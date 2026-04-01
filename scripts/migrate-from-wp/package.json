@@ -1,0 +1,13 @@
+{
+  "name": "canino-fm-migrate",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "migrate": "node index.js",
+    "migrate:dry": "node index.js --dry-run"
+  },
+  "dependencies": {
+    "@sanity/client": "^6.23.0",
+    "dotenv": "^16.4.7"
+  }
+}

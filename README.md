@@ -14,12 +14,13 @@ This repo is the result of migrating the previous WordPress site to a static, CM
 
 - **Sanity Studio URL:** [https://caninofm.sanity.studio](https://caninofm.sanity.studio)  
   Open this link in your browser and sign in. This is where you edit all content.
+- **Dataset:** Content is stored in the **production** dataset. The live site reads from this dataset at build time.
 
 ### What you can edit
 
 | Content | What it is |
 |--------|------------|
-| **Program / schedule** | Upcoming broadcast dates and show times (events and shows). |
+| **Program** | Upcoming broadcast dates and show times (events and shows). |
 | **Live hero** | The main video or live embed at the top of the homepage. |
 | **Archive** | Past events and shows (dates, titles, images, SoundCloud embeds). |
 | **Artists** | The A–Z list of artists. |
@@ -61,13 +62,13 @@ pnpm build
 
 The site needs Sanity credentials to fetch content. **These must not be committed to the repo.**
 
-- **Locally:** Copy `.env.example` to `.env` and fill in the values (for development only).
+- **Locally:** Add a `.env` file at the repo root (gitignored) with the variables below for development only.
 - **Production (Netlify):** Set these in Netlify: **Site settings → Environment variables.**
 
 | Variable | Description |
 |----------|-------------|
 | `SANITY_PROJECT_ID` | Your Sanity project ID (from Sanity dashboard). |
-| `SANITY_API_READ_TOKEN` or `SANITY_TOKEN` | Read-only API token (Viewer) for the build. |
+| `SANITY_API_READ_TOKEN` | Read-only API token (Viewer) for the build. |
 | `SANITY_DATASET` | Dataset name (usually `production`). |
 
 See **"Account and service setup"** in `docs/PLAN.md` for how to create the Sanity project and tokens, and how to connect Netlify to this repo.
@@ -75,9 +76,9 @@ See **"Account and service setup"** in `docs/PLAN.md` for how to create the Sani
 ### Repo layout (after full setup)
 
 - **`src/`** — Astro pages, components, and styles (scoped CSS). Data is fetched from Sanity at build time.
-- **`cms/`** — Sanity Studio (schema, config). Run from this folder for local Studio dev or deploy to *.sanity.studio.
-- **`docs/`** — `PLAN.md` (migration plan), `TASKS.md` (phases), `EDITING.md` (content guide for admins). `docs/wp/` is the reference WordPress theme (canino24), not used in the build.
-- **`.env.example`** — Example env vars; no real secrets. Actual secrets live only in Netlify (and locally in `.env` if you develop).
+- **`cms/`** — Sanity Studio (schema, config). Run from this folder for local Studio dev or deploy to `*.sanity.studio`. To add or change content types, see **`docs/CONTENT_TYPES.md`**.
+- **`scripts/migrate-from-wp/`** — One-off WordPress SQL → JSON / Sanity import. See **`scripts/migrate-from-wp/README.md`**.
+- **`docs/`** — `PLAN.md` (migration plan), `TASKS.md` (phases), `CONTENT_TYPES.md` (schema roadmap), `EDITING.md` (content guide for admins — Phase 3). `docs/wp/` is the reference WordPress theme (canino24), not used in the build.
 
 ### Deploy
 

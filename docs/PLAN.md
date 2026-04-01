@@ -16,11 +16,11 @@ Reference WP implementation is in this repo under docs/wp/.
 
 ## Current state (from WP theme + SQL)
 
-**Theme:** [wp-content/themes/canino24/](wp-content/themes/canino24/) (canino24). Single "Home" template; no separate HTML pages—one scroll with sections: Program (hero + schedule), Archive (shows grid), Artists, About.
+**Theme:** [wp-content/themes/canino24/](wp-content/themes/canino24/) (canino24). Single "Home" template; no separate HTML pages—one scroll with sections: hero and program schedule, archive show grid, Artists, About.
 
 **Data in use:**
 
-- **Program (schedule):** ACF repeater on the front page (post_id 2): `program` → `event[]` (each has `date`) → `shows[]` (each has `schedule`, `title`). Stored as post meta (e.g. `program_event_0_date`, `program_event_0_shows_0_schedule`, `program_event_0_shows_0_title`).
+- **Program:** ACF repeater on the front page (post_id 2): `program` → `event[]` (each has `date`) → `shows[]` (each has `schedule`, `title`). Stored as post meta (e.g. `program_event_0_date`, `program_event_0_shows_0_schedule`, `program_event_0_shows_0_title`).
 - **Live hero:** ACF on same page: `live` (oEmbed/HTML) or `link` (iframe URL); parsed for `src` for YouTube.
 - **Archive:** CPT `events` (one post per broadcast date, title = date string e.g. "08.02.2026") with ACF relationship `shows` → CPT `show`. Each `show` has: post title, featured image, ACF `soundcloud` (iframe HTML; code extracts `src`). Events ordered by `menu_order` (simple-custom-post-order). Archive shows all events' shows in one flat list, chunked in groups of 30 with "Load More."
 - **Artists:** CPT `artist`; only `post_title` used; ordered A–Z.
@@ -92,12 +92,12 @@ Reference WP implementation is in this repo under docs/wp/.
 
 Normalize WP/ACF into a small set of content types the static site consumes (JSON or CMS collections).
 
-- **Program (schedule):**  
+- **Program:**  
 `events[]` → each: `date` (string, e.g. "08.02.2026"), `shows[]` → each: `schedule` (e.g. "13:00-14:00"), `title` (e.g. "llora nena llora w. Chica Acosta").  
 One "program" entity (or one file) for the next few days/weeks.
 - **Hero / live:**  
 `live` (HTML string or oEmbed URL) or `link` (YouTube iframe URL or embed URL). One field; build-time resolves to iframe `src` if needed.
-- **Shows (archive):**  
+- **Shows:**  
 Flat list for display: `eventDate`, `showTitle`, `imageUrl`, `soundcloudEmbedSrc` (parsed from iframe). Source of truth in CMS: "Events" (date + list of Show refs) and "Shows" (title, image, SoundCloud embed). Build flattens events → shows and sorts (e.g. by date desc).
 - **Artists:**  
 List of `name` (string). No extra fields for 1:1.
@@ -130,7 +130,7 @@ Optional default SoundCloud embed URL for footer when no show is selected (from 
   - Data: fetched from Sanity at build time (no content committed; or optional `data/` fallback for dev).  
   - Docs: README with "How to edit content" (Sanity Studio URL and steps); EDITING.md for admins with screenshots.  
   - **README as single source of truth:** Update `README.md` at the end of each phase so it stays accurate for both admins (Studio URL, what to edit) and developers (commands, env, repo layout). See TASKS.md for the explicit "Update README" task in each phase.  
-  - No `.env` in repo; `.env.example` with `SANITY_PROJECT_ID`, `SANITY_TOKEN` (or similar).  
+  - No `.env` in repo; document required vars in README (`SANITY_PROJECT_ID`, `SANITY_API_READ_TOKEN`, `SANITY_DATASET`).  
   - Lockfile and scripts use pnpm.
 - **Netlify:** Connect repo; build command = `pnpm build` (Astro outputs to `dist/` by default); publish = `dist`. Set Sanity env vars in Netlify. Domain: canino.fm. Optional: Sanity webhook → Netlify build hook so publishes trigger a rebuild.
 
@@ -175,7 +175,7 @@ Optional default SoundCloud embed URL for footer when no show is selected (from 
 
 - **Never commit:** API keys (Sanity, Contentful, etc.), Netlify tokens, or any private credentials.  
 - **Use:** Netlify env vars (and optionally GitHub Secrets for CI).  
-- **Repo:** Only `.env.example` with placeholder names; README states "set these in Netlify."
+- **Repo:** README documents env var names; developers use a local `.env` (gitignored); Netlify stores real values.
 
 ---
 
@@ -196,10 +196,10 @@ Assume you only have a **personal GitHub** account and an **existing Netlify** a
 - Go to [sanity.io](https://www.sanity.io) and **Sign up** (e.g. "Sign up with GitHub" to use your existing GitHub).
 - **Create a project:** Dashboard → **Create new project**. Name it e.g. "Canino FM". Choose a dataset name (default `production` is fine). Region: pick one close to you or your users.
 - **Project ID:** In the project, go to **Manage** (or **Settings** → **Project settings**). Copy the **Project ID** (e.g. `abc123xyz`). You'll need it in the Astro app and in Netlify env.
-- **API token for the site (read-only):** **Settings** → **API** → **Tokens** → **Add API token**. Name it e.g. "Netlify build". Choose **Viewer** (read-only) so the build can fetch content. Copy the token once; you can't see it again. Store it in Netlify env as `SANITY_API_READ_TOKEN` (or `SANITY_TOKEN`).
-- **API token for migration (write):** If you'll run a script that writes content (e.g. import from WP), create a second token with **Editor** (or **Administrator**) rights. Use it only locally for the one-off migration; do **not** put it in Netlify.
+- **API token for the site (read-only):** **Settings** → **API** → **Tokens** → **Add API token**. Name it e.g. "Netlify build". Choose **Viewer** (read-only) so the build can fetch content. Copy the token once; you can't see it again. Store it in Netlify env as `SANITY_API_READ_TOKEN`.
+- **API token for migration (write):** If you'll run a script that writes content (e.g. import from WP), create a **separate** token with **Editor** (or **Administrator**) rights. It is a different secret from the Viewer token. Set it locally as `SANITY_WRITE_TOKEN` for `scripts/migrate-from-wp` only; do **not** put it in Netlify.
 - **Studio URL:** After you deploy the schema, Sanity Studio is available at `https://caninofm.sanity.studio` (or you can embed it in the Astro app and deploy it). Share that URL with non-technical maintainers so they can edit content. Optionally add them as users in **Manage** → **Members** (invite by email).
-- **Dataset:** Default is `production`. The Astro app will use this dataset name when querying; document it in the repo (e.g. in `.env.example`: `SANITY_DATASET=production`).
+- **Dataset:** Default is `production`. The Astro app will use this dataset name when querying; document it in the README (e.g. `SANITY_DATASET=production` for local `.env` and Netlify).
 
 ### 3. Netlify (you already have an account)
 
@@ -208,7 +208,7 @@ Assume you only have a **personal GitHub** account and an **existing Netlify** a
 - **Build settings:** Build command: `pnpm build` (or `npm run build` if you don't use pnpm in CI). Publish directory: `dist`. Base directory: leave empty unless the Astro app lives in a subfolder.
 - **Environment variables:** **Site settings** → **Environment variables** → **Add variable** (or **Add from .env`). Add:
   - `SANITY_PROJECT_ID` = your Sanity project ID  
-  - `SANITY_API_READ_TOKEN` (or `SANITY_TOKEN`) = the read-only token from Sanity  
+  - `SANITY_API_READ_TOKEN` = the read-only (Viewer) token from Sanity  
   - `SANITY_DATASET` = `production` (if not default)
 - **Custom domain (Phase 5 in TASKS.md):** When ready to go live at canino.fm, go to **Domain settings** → **Add custom domain** → `canino.fm`. Netlify will show the required DNS records (e.g. A or CNAME). In your domain registrar, point the domain to Netlify as instructed. Enable HTTPS (Netlify will provision a cert).
 - **Build hook (optional):** **Site settings** → **Build & deploy** → **Build hooks** → **Add build hook**. Name it e.g. "Sanity publish". Copy the URL. Later you'll add this URL as a webhook in Sanity so that when someone publishes content, Sanity calls the hook and Netlify triggers a new build.

@@ -2,17 +2,9 @@
 
 Split these among agents (or do yourself). Order matters: complete each phase before starting the next that depends on it.
 
-**Reference:** Full plan in [docs/PLAN.md](./PLAN.md). WP UI to copy: [docs/wp/wp-content/themes/canino24/](./wp/wp-content/themes/canino24/).
+**Reference:** Full plan in [docs/PLAN.md](./PLAN.md). Informal backlog: [docs/BACKLOG.md](./BACKLOG.md). WP UI to copy: [docs/wp/wp-content/themes/canino24/](./wp/wp-content/themes/canino24/).
 
 **README:** At the end of each phase, update `README.md` so it stays accurate for admins (Sanity Studio URL, what to edit) and developers (commands, env, repo layout). The task tables below include an explicit "Update README" step per phase.
-
----
-
-## What's first?
-
-**Phase 0 (you):** Complete account setup (GitHub org + repo, Sanity project + tokens, Netlify connect + env). Custom domain comes later when you're ready to swap the live site. Use the "Account and service setup" walkthrough in PLAN.md.
-
-**Then:** Phase 1 – Agent 1 (Data and CMS). No UI work until Sanity schema and (optionally) migrated content exist.
 
 ---
 
@@ -24,7 +16,7 @@ Do this before any agent work. No code in repo required.
 |---|------|------|
 | 0.1 | Create GitHub org (e.g. `canino-fm`), then repo (e.g. `canino-fm` or `canino-fm-site`). | ☑ |
 | 0.2 | Create Sanity project ("Canino FM"), note Project ID. Create **Viewer** token for builds; store secret elsewhere (e.g. password manager). Optionally create **Editor** token for one-off migration. | ☑ |
-| 0.3 | In Netlify: Add site from Git (connect repo). Build command: `pnpm build`; Publish: `dist`. Add env: `SANITY_PROJECT_ID`, `SANITY_TOKEN`, `SANITY_DATASET=production`. | ☑ |
+| 0.3 | In Netlify: Add site from Git (connect repo). Build command: `pnpm build`; Publish: `dist`. Add env: `SANITY_PROJECT_ID`, `SANITY_API_READ_TOKEN`, `SANITY_DATASET=production`. | ☑ |
 | 0.4 | **Update README:** Once Sanity Studio URL is known (after Phase 1), add it to the "For content editors" section; until then, leave the placeholder or add a note "(set after Phase 1)". | ☑ |
 
 ---
@@ -36,14 +28,14 @@ Do this before any agent work. No code in repo required.
 **Prompt for Agent 1:**  
 *"Read docs/PLAN.md and docs/TASKS.md. This repo is the Canino FM migration. Execute Phase 1 (Data and CMS) as below. Create schema and migration in this repo; do not commit API tokens."*
 
-| # | Task | Deliverable |
-|---|------|-------------|
-| 1.1 | Define Sanity document types per PLAN "Target data model": Program (events → date, shows[] with schedule + title), Events (date + refs to Shows), Shows (title, image, SoundCloud embed), Artists (name), Settings (about popup, contact email). | Schema files in e.g. `sanity/schemas/` or `cms/schemas/`. |
-| 1.2 | Add Sanity Studio to repo (or document deploy of Studio) so content can be edited. | Studio deployable from repo or docs for `*.sanity.studio`. |
-| 1.3 | Write migration script (Node or Python): read `canino.sql` (or path you specify), extract program (post_id 2 meta), events (CPT + ACF), shows (title, featured image, soundcloud), artists; output for Sanity import and list of image paths. | Script in e.g. `scripts/migrate-from-wp/`; README for run instructions. |
-| 1.4 | Document how to run the script (env for Sanity write token), import into Sanity, and where to put show images (Sanity assets vs `public/images/`). | `scripts/migrate-from-wp/README.md` or same in main docs. |
-| 1.5 | Add short doc "Adding or changing content types" (roadmap for posts, comments, etc.). | e.g. `docs/CONTENT_TYPES.md` or section in README. |
-| 1.6 | **Update README:** In "For content editors", set the real Sanity Studio URL (e.g. `https://caninofm.sanity.studio`). Add any CMS-specific notes (e.g. dataset name) if useful for admins. | `README.md` "For content editors" section. |
+| # | Task | Deliverable | Done |
+|---|------|-------------|------|
+| 1.1 | Define Sanity document types per PLAN "Target data model": Program (events → date, shows[] with schedule + title), Events (date + refs to Shows), Shows (title, image, SoundCloud embed), Artists (name), Settings (about popup, contact email). | Schema in `cms/schemaTypes/`; register types in `cms/schemaTypes/index.ts`. | ☑ |
+| 1.2 | Add Sanity Studio to repo (or document deploy of Studio) so content can be edited. | Studio deployable from repo or docs for `*.sanity.studio`. | ☑ |
+| 1.3 | Write migration script (Node or Python): read `canino.sql` (or path you specify), extract program (post_id 2 meta), events (CPT + ACF), shows (title, featured image, soundcloud), artists; output for Sanity import and list of image paths. | `scripts/migrate-from-wp/` (`index.js`, `parse-sql.js`); see `README.md` there. | ☑ |
+| 1.4 | Document how to run the script (env for Sanity write token), import into Sanity, and where to put show images (Sanity assets vs `public/images/`). | `scripts/migrate-from-wp/README.md` or same in main docs. | ☑ |
+| 1.5 | Add short doc "Adding or changing content types" (roadmap for posts, comments, etc.). | e.g. `docs/CONTENT_TYPES.md` or section in README. | ☑ |
+| 1.6 | **Update README:** In "For content editors", set the real Sanity Studio URL (e.g. `https://caninofm.sanity.studio`). Add any CMS-specific notes (e.g. dataset name) if useful for admins. | `README.md` "For content editors" section. | ☑ |
 
 ---
 
@@ -56,7 +48,7 @@ Do this before any agent work. No code in repo required.
 
 | # | Task | Deliverable |
 |---|------|-------------|
-| 2.1 | Bootstrap Astro project in repo root (pnpm). Configure for static output, add `@astrojs/sanity` (or fetch via `@sanity/client`) at build time. Add `.env.example` with `SANITY_PROJECT_ID`, `SANITY_TOKEN`, `SANITY_DATASET`. | `package.json`, `astro.config.*`, `.env.example`. |
+| 2.1 | Bootstrap Astro project in repo root (pnpm). Configure for static output, add `@astrojs/sanity` (or fetch via `@sanity/client`) at build time. Document `SANITY_PROJECT_ID`, `SANITY_API_READ_TOKEN`, `SANITY_DATASET` in README; local dev uses gitignored root `.env`. | `package.json`, `astro.config.*`, README env section. |
 | 2.2 | Single-page layout: sections in order – Header, Hero (live/video + program block), Archive (shows grid + Load More), Artists, About, Footer + Player. Use canino24 template/partials and class names as reference. | `src/pages/index.astro` (or single route) composing section components. |
 | 2.3 | Header: nav, logo (inline SVG from canino24 `static/img/icons/logo.php`), symbol. Convert header SCSS to Astro scoped CSS. | `src/components/Header.astro` (or similar). |
 | 2.4 | Hero + Program: live embed (YouTube iframe from `live`/`link`), program schedule (events → date, shows with schedule + title). Convert program SCSS to scoped CSS. | `src/components/Hero.astro`, `src/components/Program.astro`. |
@@ -125,4 +117,4 @@ Do this after review, when you want the new site to replace the current one at c
 | 4 | Agent 4 (A11y) | After 1:1 is approved |
 | 5 | You | When ready to swap live site |
 
-**First action:** Complete Phase 0 (account setup), then hand off Phase 1 to Agent 1 using the prompt in the Phase 1 table.
+**Next:** Phase 2 — hand off to Agent 2 using the prompt in the Phase 2 table (Phase 0 and Phase 1 are complete).

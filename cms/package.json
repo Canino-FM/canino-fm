@@ -6,7 +6,6 @@
   "license": "UNLICENSED",
   "scripts": {
     "dev": "sanity dev",
-    "start": "sanity start",
     "build": "sanity build",
     "deploy": "sanity deploy",
     "deploy-graphql": "sanity graphql deploy"
@@ -15,18 +14,19 @@
     "sanity"
   ],
   "dependencies": {
-    "@sanity/vision": "^5.11.0",
-    "react": "^19.1",
-    "react-dom": "^19.1",
-    "sanity": "^5.11.0",
-    "styled-components": "^6.1.18"
+    "@sanity/icons": "^3.7.4",
+    "@sanity/vision": "^5.18.0",
+    "react": "^19.2.4",
+    "react-dom": "^19.2.4",
+    "sanity": "^5.18.0",
+    "styled-components": "^6.3.12"
   },
   "devDependencies": {
     "@sanity/eslint-config-studio": "^6.0.0",
-    "@types/react": "^19.1",
-    "eslint": "^9.28",
-    "prettier": "^3.5",
-    "typescript": "^5.8"
+    "@types/react": "^19.2.14",
+    "eslint": "^9.39.4",
+    "prettier": "^3.8.1",
+    "typescript": "^5.9.3"
   },
   "prettier": {
     "semi": false,
