@@ -29,7 +29,7 @@ pnpm install
 
 ### 1. Extract only (dry run, no Sanity)
 
-Writes extracted data to `./output/` as JSON and a list of image references. No env vars required.
+Writes extracted data to `./output/` as JSON, **`show-images-manifest.json`** (by default on `--dry-run`), and `image-paths.txt`. No env vars required.
 
 ```bash
 node index.js /path/to/your/canino.sql --dry-run
@@ -40,6 +40,8 @@ If the dump is in this folder and named `canino.sql`:
 ```bash
 node index.js --dry-run
 ```
+
+**Image manifest:** With `--dry-run`, `--manifest-images` is **on** unless you pass `--no-manifest-images`. For a normal extract without pushing, you can force the manifest with `--manifest-images`. Optional **`--uploads-root=/path/to/wp-content/uploads`** (or env **`MIGRATE_UPLOADS_ROOT`**) sets `localPath` and `localFileExists` in the manifest; if omitted, the script uses `../../docs/wp/wp-content/uploads` when that folder exists (this repo).
 
 Optional table prefix (if your dump uses a prefix other than `wp_`):
 
@@ -66,8 +68,17 @@ node index.js /path/to/canino.sql --push
 The script will:
 
 1. Extract data from the SQL file.
-2. Write JSON to `output/` (same as dry run).
-3. Create or replace documents in Sanity: `program`, `settings`, and all `show`, `event`, and `artist` documents.
+2. Write JSON to `output/` (same as dry run). Add `--manifest-images` if you want `show-images-manifest.json` without `--dry-run`.
+3. Create or replace documents in Sanity: `program`, `settings`, and all `show`, `event`, and `artist` documents. Existing **`image`** on each show is merged in first so a re-push does not strip artwork.
+4. **Upload featured images:** for each show with `_thumbnail_id` → `_wp_attached_file`, read the file from **`--uploads-root`** / `MIGRATE_UPLOADS_ROOT` / default `docs/wp/wp-content/uploads`, upload to Sanity, then patch `show.image`. Rows that already have an image are skipped unless you pass **`--force-images`**.
+
+| Flag / env | Role |
+|------------|------|
+| `--no-upload-images` | Push documents only; skip step 4. |
+| `--force-images` | Upload and patch even when the show already has an image. |
+| `MIGRATE_IMAGE_BASE_URL` | e.g. `https://canino.fm/wp-content/uploads` — used when the file is not on disk (`file_missing` / no uploads root); fetches `BASE/relativePath`. |
+
+Requires a reachable **`uploads` folder** and/or **`MIGRATE_IMAGE_BASE_URL`** so every image can be resolved; otherwise those rows are skipped with a warning.
 
 ---
 
@@ -80,16 +91,21 @@ The script will:
 | `output/shows.json` | Array of show documents (title, soundcloud; image not in JSON). |
 | `output/events.json` | Array of event documents (date + refs to shows). |
 | `output/artists.json` | Array of artist documents (name). |
-| `output/image-paths.txt` | Tab-separated: WP post ID, show title, attachment GUID. Use this to know which images to upload. |
+| `output/image-paths.txt` | Tab-separated: WP post ID, show title, **show post `guid`** (permalink — **not** the image file). Legacy / debugging; prefer `show-images-manifest.json`. |
+| `output/show-images-manifest.json` | One row per show: `sanityDocumentId` (`show-<id>`), `showTitle`, `relativePath` (`_wp_attached_file`), optional `localPath` / `localFileExists`, **`suggestedAssetFilename`** (path flattened, e.g. `2026/01/a.png` → `2026-01-a.png` — use when uploading to Sanity so identical basenames in different months stay unique **without** putting WP IDs in the filename). Status: `ok` \| `ok_relative_only` \| `no_thumbnail` \| … |
 
 ---
 
 ## Show images
 
-The SQL dump does not contain binary image data. Featured images for shows are referenced in `image-paths.txt` (WP attachment GUIDs/URLs). You can:
+The SQL dump does not contain binary image data. Featured images are **not** the show post’s `guid` in `image-paths.txt` (that column is the show’s permalink). In WordPress they are stored as **`_thumbnail_id`** on the show post, pointing to an **attachment**; the file path is **`_wp_attached_file`** in that attachment’s meta, and files live under **`wp-content/uploads/`** on the server (or at `https://your-domain/wp-content/uploads/<path>`).
+
+The numeric **WP post ID** (e.g. `83`) is only the database primary key for the show; Sanity reuses it in **`show-83`** so documents stay stable. It does not need to appear in uploaded **asset** filenames — use **`suggestedAssetFilename`** from the manifest (path-based) instead.
+
+You can:
 
 1. **Upload to Sanity:** In Sanity Studio, edit each Show and upload the image (or use Sanity’s “Import from URL” if your old site is still live).
-2. **Bulk upload:** Use Sanity’s asset API with the URLs from `image-paths.txt` in a separate script, or use [sanity-migrate](https://www.npmjs.com/package/sanity-migrate) / custom script that downloads from the GUID URL and uploads to Sanity.
+2. **Bulk upload:** Use `show-images-manifest.json` + `localPath` (or build a URL from `relativePath`) with Sanity’s asset API in a follow-up script.
 3. **Keep images in the repo:** Copy files from WP `wp-content/uploads/` into the static site (e.g. `public/images/shows/`) and reference by path in the frontend until you move them to Sanity.
 
 After migration, the build (Astro) will use Sanity image URLs for shows; until then, you can leave the image field empty or point to a placeholder.

@@ -1,6 +1,6 @@
 # Canino FM
 
-Static website for **Canino FM**, built with [Astro](https://astro.build). Content is managed in **Sanity** (no code or Git required to update the site). The site is deployed on **Netlify**. Until the custom domain is connected (Phase 5 in `docs/TASKS.md`), the site is available at the Netlify-provided URL (e.g. *sitename*.netlify.app); after that it will be at [canino.fm](https://canino.fm).
+Static website for **Canino FM**, built with [Astro](https://astro.build). Content is managed in **Sanity** (no code or Git required to update the site). The site is deployed on **Netlify**. Until the custom domain is connected (Phase 6 in `docs/TASKS.md`), the site is available at the Netlify-provided URL (e.g. *sitename*.netlify.app); after that it will be at [canino.fm](https://canino.fm).
 
 This repo is the result of migrating the previous WordPress site to a static, CMS-backed setup. The original WordPress theme and reference files are kept under `docs/wp/` for reference only; they are not used in production.
 
@@ -30,7 +30,7 @@ When you **publish** changes in Sanity, the live site rebuilds automatically and
 
 ### Need more help?
 
-- A step-by-step **content guide** with screenshots is in **`docs/EDITING.md`** *(created in Phase 3)*.  
+- A step-by-step **content guide** with screenshots is in **`docs/EDITING.md`** *(created in Phase 4)*.
 - For technical or access issues, contact your site maintainer or the developer (see credits below).
 
 ---
@@ -45,7 +45,7 @@ When you **publish** changes in Sanity, the live site rebuilds automatically and
 
 ### Running the site locally
 
-*(Requires the Astro project to be set up — see Phase 2 in `docs/TASKS.md`.)*
+*(Requires the Astro project to be set up — see Phase 3 in `docs/TASKS.md`.)*
 
 ```bash
 # Install dependencies (use pnpm)
@@ -78,7 +78,7 @@ See **"Account and service setup"** in `docs/PLAN.md` for how to create the Sani
 - **`src/`** — Astro pages, components, and styles (scoped CSS). Data is fetched from Sanity at build time.
 - **`cms/`** — Sanity Studio (schema, config). Run from this folder for local Studio dev or deploy to `*.sanity.studio`. To add or change content types, see **`docs/CONTENT_TYPES.md`**.
 - **`scripts/migrate-from-wp/`** — One-off WordPress SQL → JSON / Sanity import. See **`scripts/migrate-from-wp/README.md`**.
-- **`docs/`** — `PLAN.md` (migration plan), `TASKS.md` (phases), `CONTENT_TYPES.md` (schema roadmap), `EDITING.md` (content guide for admins — Phase 3). `docs/wp/` is the reference WordPress theme (canino24), not used in the build.
+- **`docs/`** — `PLAN.md` (migration plan), `TASKS.md` (phases), `CONTENT_TYPES.md` (schema roadmap), `EDITING.md` (content guide for admins — Phase 4). `docs/wp/` is the reference WordPress theme (canino24), not used in the build.
 
 ### Deploy
 

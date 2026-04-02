@@ -115,11 +115,33 @@ Optional default SoundCloud embed URL for footer when no show is selected (from 
 1. **Export content from SQL (one-off script or manual):**
   - Program: read post meta for post_id 2 where keys match `program_%`, reconstruct ACF repeater structure (or export ACF JSON if available).
   - Events: `wp_posts` where `post_type = 'events'`; order by `menu_order`; for each, get ACF `shows` (post IDs).
-  - Shows: for each show post, `post_title`, featured image (resolve `_wp_attached_file` / GUID to final URL or copy files), ACF `soundcloud`; parse iframe `src`.
+  - Shows: for each show post, `post_title`, featured image (see **WordPress show images** below), ACF `soundcloud`; parse iframe `src`.
   - Artists: `wp_posts` where `post_type = 'artist'`, order by title; output names.
   - Theme-settings: ACF options for `theme-settings` (about, contact) from `wp_options` if present; else keep current hardcoded about and [info@canino.fm](mailto:info@canino.fm).
-2. **Media:** Copy show images from WP uploads into the new repo (e.g. `public/images/shows/`) and reference by path or URL in the flattened shows list. Do not commit secrets; use public or relative URLs.
-3. **Future (posts/comments):** Not in scope for v1. Roadmap: add "Post" (and optionally "Project") collection in CMS; add an optional "Blog" or "News" section and templates; comments could be added later via a service (e.g. Commento, giscus) or a small backend—document as "Phase 2" in the repo README.
+2. **Media (show images → Sanity):** Prefer uploading binaries into Sanity’s content lake so the Astro build uses `imageUrlBuilder` / CDN URLs. See the subsection **WordPress show images → Sanity assets** below. A fallback is copying files into the repo (`public/images/shows/`) only if you are not using Sanity images yet.
+
+### WordPress show images → Sanity assets
+
+**Where the files live**
+
+- **On the old server (filesystem):** Uploaded media is under **`wp-content/uploads/`**, usually organized by year/month (e.g. `wp-content/uploads/2024/03/show-artwork.jpg`). This is not inside the MySQL dump; you need a backup of the WP site files, or a live URL that still serves those paths.
+- **In the database (metadata only):** For each **show** post, the featured image is **not** the show row’s `guid` (that field is the post permalink). WordPress stores:
+  - In **`wp_postmeta`:** `meta_key = '_thumbnail_id'`, `post_id` = show’s `ID` → `meta_value` = attachment post ID.
+  - For that **attachment** row in **`wp_posts`** (`post_type = 'attachment'`): `guid` is often the full URL to the file (historically).
+  - In **`wp_postmeta`** for the attachment: `meta_key = '_wp_attached_file'` → relative path such as `2024/03/show-artwork.jpg`.
+
+**Public URL from metadata (if the site is still online)**
+
+- `https://canino.fm/wp-content/uploads/` + value of `_wp_attached_file` for the attachment (normalize slashes). Use HTTPS; avoid hotlinking long-term—this is for **migration fetch** only.
+
+**How to get them into Sanity**
+
+1. **Resolve** for each show: `_thumbnail_id` → attachment ID → `_wp_attached_file` (and/or attachment `guid`) → one HTTP(S) URL or local file path.
+2. **Upload** with the Sanity client: `@sanity/client` **`assets.upload`** (e.g. `client.assets.upload('image', bufferOrStream, { filename: '…' })`), which returns an asset document `_id` (e.g. `image-…`).
+3. **Patch** each `show` document: set `image` to `{ _type: 'image', asset: { _type: 'reference', _ref: '<assetDocumentId>' } }` (same `_id` as `show-${wpPostId}` from migration).
+
+**Current repo caveat:** `scripts/migrate-from-wp/output/image-paths.txt` lists each show’s **post `guid`** (permalink), not the featured image. For automation, extend the migration script to read `_thumbnail_id` and attachment meta, emit real image URLs or paths, then run a small upload script (or use Sanity Studio manually per show). See **TASKS.md** Phase 2 for images.
+3. **Future (posts/comments):** Not in scope for v1. Roadmap: add "Post" (and optionally "Project") collection in CMS; add an optional "Blog" or "News" section and templates; comments could be added later via a service (e.g. Commento, giscus) or a small backend—document in the repo README when that work is scheduled (see TASKS.md for current phases).
 
 ---
 
@@ -210,7 +232,7 @@ Assume you only have a **personal GitHub** account and an **existing Netlify** a
   - `SANITY_PROJECT_ID` = your Sanity project ID  
   - `SANITY_API_READ_TOKEN` = the read-only (Viewer) token from Sanity  
   - `SANITY_DATASET` = `production` (if not default)
-- **Custom domain (Phase 5 in TASKS.md):** When ready to go live at canino.fm, go to **Domain settings** → **Add custom domain** → `canino.fm`. Netlify will show the required DNS records (e.g. A or CNAME). In your domain registrar, point the domain to Netlify as instructed. Enable HTTPS (Netlify will provision a cert).
+- **Custom domain (Phase 6 in TASKS.md):** When ready to go live at canino.fm, go to **Domain settings** → **Add custom domain** → `canino.fm`. Netlify will show the required DNS records (e.g. A or CNAME). In your domain registrar, point the domain to Netlify as instructed. Enable HTTPS (Netlify will provision a cert).
 - **Build hook (optional):** **Site settings** → **Build & deploy** → **Build hooks** → **Add build hook**. Name it e.g. "Sanity publish". Copy the URL. Later you'll add this URL as a webhook in Sanity so that when someone publishes content, Sanity calls the hook and Netlify triggers a new build.
 
 ### 4. No other accounts
@@ -234,8 +256,8 @@ When you create the new repo **canino-fm** and open it in Cursor, a new chat won
 
 ## Order of operations
 
-1. **Account setup:** Complete the walkthrough above (GitHub org + repo, Sanity project + tokens, Netlify connect + env). Custom domain is Phase 5 in TASKS.md when you are ready to swap the live site.
-2. **Data agent:** Sanity schema + migration script; you run script and import into Sanity (and migrate images).
+1. **Account setup:** Complete the walkthrough above (GitHub org + repo, Sanity project + tokens, Netlify connect + env). Custom domain is Phase 6 in TASKS.md when you are ready to swap the live site.
+2. **Data agent:** Sanity schema + migration script; you run script and import into Sanity, then **run the image pipeline** (resolve `_thumbnail_id` → upload assets → patch `show.image`) so the archive has real images in the content lake.
 3. **UI agent:** New Astro repo (pnpm) in `canino-fm`, 1:1 implementation, no a11y changes.
 4. **Integration agent:** Sanity webhook → Netlify build hook, env docs, README update + content guide (EDITING.md); you point canino.fm to Netlify and test.
 5. **Later:** A11y agent proposes and then implements WCAG 2.1 AAA fixes after you commit the 1:1 baseline; optionally update README with a11y doc links.
@@ -246,7 +268,7 @@ When you create the new repo **canino-fm** and open it in Cursor, a new chat won
 
 - **Stack (chosen):** Astro + Sanity + Netlify + GitHub; pnpm; Astro scoped CSS and minimal vanilla JS. Astro's default build (Vite/esbuild) is used; optional TypeScript, ESLint, Prettier (or Biome) for dev.  
 - **Content:** Program, hero (live/link), archive (events + shows + Sanity images + SoundCloud), artists, about/settings; all from Sanity at build time.  
-- **One-off:** Migrate from `jocczzlm_canino.sql` + WP uploads into Sanity (and/or static assets as needed); no WordPress in production.  
+- **One-off:** Migrate from SQL + **WP uploads folder or fetchable `wp-content/uploads/` URLs** into Sanity assets; show documents reference those assets. No WordPress in production.
 - **Agents:** Data/CMS (Sanity schema + migration) → UI (Astro 1:1) → Integrate/Docs → A11y (separate, after your approval).  
 - **Future:** Posts and comments documented as roadmap; credits updated to you (Dylan Kario) where appropriate.  
 - **README:** Updated at the end of each phase (see TASKS.md) so admins and developers always have accurate instructions.
