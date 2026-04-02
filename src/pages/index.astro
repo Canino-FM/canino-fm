@@ -1,0 +1,113 @@
+---
+import BaseLayout from '@/layouts/BaseLayout.astro'
+import Header from '@/components/Header.astro'
+import Hero from '@/components/Hero.astro'
+import Archive from '@/components/Archive.astro'
+import Artists from '@/components/Artists.astro'
+import About from '@/components/About.astro'
+import Footer from '@/components/Footer.astro'
+import { fetchHomePageData, chunkArchiveShows } from '@/lib/sanity'
+
+const data = await fetchHomePageData()
+const archiveChunks = chunkArchiveShows(data.archiveShows, 30)
+---
+
+<BaseLayout>
+	<Header />
+	<main class="main">
+		<div class="main__container">
+			<Hero
+				program={data.program}
+				heroVideoHtml={data.heroVideoHtml}
+				heroIframeSrc={data.heroIframeSrc}
+			/>
+			<Archive chunks={archiveChunks} />
+			<Artists names={data.artists} />
+			<About settings={data.settings} />
+		</div>
+	</main>
+	<Footer />
+	<script is:inline>
+		;(function () {
+			const body = document.body
+
+			window.setTimeout(function () {
+				body.classList.add('loaded')
+			}, 1000)
+
+			window.setTimeout(function () {
+				body.classList.add('animated')
+			}, 2000)
+
+			window.setTimeout(function () {
+				body.classList.add('no-transitions')
+			}, 2500)
+
+			document.querySelectorAll('.button--about').forEach(function (btn) {
+				function toggleAbout() {
+					body.classList.toggle('show-about')
+				}
+				btn.addEventListener('click', toggleAbout)
+				btn.addEventListener('keydown', function (e) {
+					if (e.key === 'Enter' || e.key === ' ') {
+						e.preventDefault()
+						toggleAbout()
+					}
+				})
+			})
+
+			document.querySelectorAll('#shows .show[data-soundcloud]').forEach(function (el) {
+				el.addEventListener('click', function () {
+					const raw = el.getAttribute('data-soundcloud') || ''
+					const src = raw.replace(/%23ff5500/gi, '%23000000')
+					if (!src) return
+					const player = document.getElementById('player')
+					if (!player) return
+					player.replaceChildren()
+					const iframe = document.createElement('iframe')
+					iframe.width = '100%'
+					iframe.height = '100'
+					iframe.setAttribute('scrolling', 'no')
+					iframe.setAttribute('frameborder', 'no')
+					iframe.setAttribute('allow', 'autoplay')
+					iframe.src = src
+					player.appendChild(iframe)
+				})
+			})
+
+			document.querySelectorAll('.menu .item a[href^="#"]').forEach(function (link) {
+				link.addEventListener('click', function (e) {
+					body.classList.remove('show-about')
+					e.preventDefault()
+					const href = link.getAttribute('href')
+					if (!href || href.length < 2) return
+					const target = document.querySelector(href)
+					if (!target) return
+					const top = target.getBoundingClientRect().top + window.scrollY
+					window.scrollTo({ top: top, behavior: 'smooth' })
+				})
+			})
+
+			document.addEventListener('click', function (e) {
+				const t = e.target
+				if (!(t instanceof Element)) return
+				const loadMore = t.closest('.load-more')
+				if (!loadMore) return
+				const group = loadMore.closest('.group')
+				if (!group || !group.parentElement) return
+				group.classList.add('loaded')
+				group.classList.remove('active')
+				const next = group.nextElementSibling
+				if (next && next.classList.contains('group')) {
+					next.classList.add('active')
+				}
+			})
+		})()
+	</script>
+</BaseLayout>
+
+<style is:global>
+	.main__container {
+		padding-bottom: 100px;
+	}
+</style>

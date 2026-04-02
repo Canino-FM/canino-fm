@@ -25,7 +25,7 @@ Reference WP implementation is in this repo under docs/wp/.
 - **Archive:** CPT `events` (one post per broadcast date, title = date string e.g. "08.02.2026") with ACF relationship `shows` → CPT `show`. Each `show` has: post title, featured image, ACF `soundcloud` (iframe HTML; code extracts `src`). Events ordered by `menu_order` (simple-custom-post-order). Archive shows all events' shows in one flat list, chunked in groups of 30 with "Load More."
 - **Artists:** CPT `artist`; only `post_title` used; ordered A–Z.
 - **About:** Hardcoded in [templates/partials/about.php](wp-content/themes/canino24/templates/partials/about.php) (three paragraphs, contacts, credits). Optional ACF theme-settings: `about` (rich text), `contact` (email) for the **popup** in [info.php](wp-content/themes/canino24/templates/partials/info.php).
-- **Player:** Footer always has `#player`; initial content from `get_field('soundcloud')` on current context (front page). Clicking an archive show replaces player content with that show's SoundCloud iframe (same `src`, `%23ff5500` → `%23000000`).
+- **Player:** Footer has `#player`, empty until the user selects an archive show; then that show's SoundCloud iframe is injected (`%23ff5500` → `%23000000`).
 
 **Not currently live but in DB:** Standard `post` (blog), `project` CPT, `collective` CPT; WP comments. You want a **roadmap only** for adding these later.
 
@@ -82,7 +82,7 @@ Reference WP implementation is in this repo under docs/wp/.
 
 ### 6. Development tooling (chosen)
 
-- **Package manager:** **pnpm.** Use for installs, scripts, and lockfile. Astro works with pnpm; use `pnpm create astro` or init then `pnpm add astro @astrojs/sanity` etc. Add `packageManager: "pnpm@x.y.z"` in `package.json` for corepack if desired.
+- **Package manager:** **pnpm.** Use for installs, scripts, and lockfile. Astro works with pnpm; use `pnpm create astro` or init then `pnpm add astro @sanity/astro` (official Sanity integration for Astro; configure in `astro.config.*`). Add `packageManager: "pnpm@x.y.z"` in `package.json` for corepack if desired.
 - **Build/bundler:** **Astro's default stack.** Astro uses Vite under the hood; Vite uses esbuild for dependency pre-bundling and Rollup for the final build. No need to add esbuild (or another bundler) unless you have a separate script pipeline (e.g. a one-off script that must be bundled with esbuild). For the site itself, `astro build` is enough.
 - **Optional for UI dev:** **TypeScript** (Astro supports it; use for Sanity schema types and component props). **ESLint** (`eslint-plugin-astro`) and **Prettier** (with `prettier-plugin-astro`) for consistent style. **Biome** is an alternative to ESLint + Prettier if you prefer a single tool. No extra build step beyond Astro.
 
@@ -103,8 +103,8 @@ Flat list for display: `eventDate`, `showTitle`, `imageUrl`, `soundcloudEmbedSrc
 List of `name` (string). No extra fields for 1:1.
 - **About / site settings:**  
 `aboutHtml` (popup), `contactEmail`; plus fixed copy for the main About block (or move to CMS later). Credits (Mónica Losada, Pablo Huertas → you) can stay in code or in CMS.
-- **Player default:**  
-Optional default SoundCloud embed URL for footer when no show is selected (from current "live" or a default show).
+- **Player:**  
+Footer `#player` starts empty; clicking an archive show injects the SoundCloud iframe.
 
 **Sanity schema:** Document types for **Program** (repeater: events → date, shows[] with schedule + title), **Events** (date + refs to Shows), **Shows** (title, image, SoundCloud embed), **Artists** (name), **Settings** (about popup text, contact email). Build fetches at build time and flattens as needed; images use Sanity's image pipeline (URL params for size/format).
 

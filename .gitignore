@@ -1,5 +1,7 @@
 node_modules
+dist
 docs/wp
-.pnpm-store
-.env*
+.astro
 .DS_Store
+.env*
+.pnpm-store

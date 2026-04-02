@@ -87,7 +87,7 @@ Requires a reachable **`uploads` folder** and/or **`MIGRATE_IMAGE_BASE_URL`** so
 | File | Description |
 |------|-------------|
 | `output/program.json` | Single program document (events + inline show slots). |
-| `output/settings.json` | Site settings (about, contact, live/link, default player). |
+| `output/settings.json` | Site settings (about, contact, live/link). |
 | `output/shows.json` | Array of show documents (title, soundcloud; image not in JSON). |
 | `output/events.json` | Array of event documents (date + refs to shows). |
 | `output/artists.json` | Array of artist documents (name). |

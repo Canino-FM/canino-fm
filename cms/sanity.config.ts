@@ -9,7 +9,7 @@ export default defineConfig({
   title: 'Canino FM',
 
   projectId: 'slg2cgjj',
-  dataset: 'production',
+  dataset: 'stage',
 
   plugins: [structureTool({structure}), visionTool()],
 

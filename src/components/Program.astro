@@ -1,0 +1,129 @@
+---
+import type { ProgramDoc, ProgramEvent, ProgramEventShow } from '@/lib/sanity'
+
+interface Props {
+	program: ProgramDoc
+}
+
+const { program } = Astro.props
+const events = program.events ?? []
+---
+
+<div class="program">
+	<div class="program__container">
+		<div class="events">
+			{
+				events.map((e: ProgramEvent) => (
+					<article class="event">
+						<h3 class="date">{e.date ?? ''}</h3>
+						<div class="shows">
+							{(e.shows ?? []).map((s: ProgramEventShow) => (
+								<article class="show">
+									<p class="time">{s.schedule ?? ''}</p>
+									<h2 class="title">{s.title ?? ''}</h2>
+								</article>
+							))}
+						</div>
+					</article>
+				))
+			}
+		</div>
+	</div>
+</div>
+
+<style is:global>
+	.program {
+		position: relative;
+	}
+
+	@media (max-width: 767px) {
+		.program {
+			height: auto;
+		}
+	}
+
+	.program__container {
+		padding: 0 calc(10 / 1920 * 100vw) 0 0;
+	}
+
+	@media (max-width: 767px) {
+		.program__container {
+			padding: calc(44 / 375 * 100vw) calc(10 / 375 * 100vw) calc(10 / 375 * 100vw);
+		}
+	}
+
+	.program .label {
+		margin-bottom: calc(22 / 1920 * 100vw);
+		text-transform: uppercase;
+	}
+
+	.program .event {
+		display: flex;
+		margin-bottom: calc(22 / 1920 * 100vw);
+	}
+
+	@media (max-width: 767px) {
+		.program .event {
+			display: block;
+			margin-bottom: calc(48 / 375 * 100vw);
+		}
+	}
+
+	.program .date {
+		width: calc(150 / 1920 * 100vw);
+		margin-bottom: 0;
+		font: inherit;
+		text-transform: uppercase;
+	}
+
+	@media (max-width: 767px) {
+		.program .date {
+			width: 100%;
+			margin-bottom: calc(24 / 375 * 100vw);
+		}
+	}
+
+	.program .shows .show {
+		display: flex;
+		margin-bottom: calc(4 / 1920 * 100vw);
+		text-transform: uppercase;
+		cursor: pointer;
+	}
+
+	@media (max-width: 767px) {
+		.program .shows .show {
+			display: block;
+			margin-bottom: calc(12 / 375 * 100vw);
+		}
+	}
+
+	.program .shows .show .time {
+		display: block;
+		width: calc(160 / 1920 * 100vw);
+	}
+
+	@media (max-width: 767px) {
+		.program .shows .show .time {
+			width: 100%;
+		}
+	}
+
+	.program .shows .show .title {
+		display: block;
+		width: calc(600 / 1920 * 100vw);
+		margin: 0;
+		font: inherit;
+		text-transform: uppercase;
+		overflow-wrap: break-word;
+	}
+
+	@media (max-width: 767px) {
+		.program .shows .show .title {
+			width: 100%;
+		}
+	}
+
+	.program .shows .show:last-child {
+		margin: 0;
+	}
+</style>

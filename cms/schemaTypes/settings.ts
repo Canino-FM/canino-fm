@@ -15,7 +15,7 @@ export const settings = defineType({
       name: 'about',
       title: 'About (popup)',
       type: 'text',
-      description: 'Text for the About popup (rich text in theme options).',
+      description: 'HTML for the About panel (e.g. <p>…</p> paragraphs).',
     }),
     defineField({
       name: 'contact',
@@ -35,12 +35,6 @@ export const settings = defineType({
       title: 'Hero link (YouTube iframe URL)',
       type: 'url',
       description: 'Alternative: YouTube iframe URL or embed URL. Parsed for src at build time.',
-    }),
-    defineField({
-      name: 'defaultPlayerEmbed',
-      title: 'Default player embed',
-      type: 'text',
-      description: 'Optional default SoundCloud embed (iframe HTML or URL) for footer when no show is selected.',
     }),
   ],
 })

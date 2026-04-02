@@ -71,17 +71,17 @@ Do this before any agent work. No code in repo required.
 
 | # | Task | Deliverable |
 |---|------|-------------|
-| 3.1 | Bootstrap Astro project in repo root (pnpm). Configure for static output, add `@astrojs/sanity` (or fetch via `@sanity/client`) at build time. Document `SANITY_PROJECT_ID`, `SANITY_API_READ_TOKEN`, `SANITY_DATASET` in README; local dev uses gitignored root `.env`. | `package.json`, `astro.config.*`, README env section. |
+| 3.1 | Bootstrap Astro project in repo root (pnpm). Configure for static output, add **`@sanity/astro`** (official Sanity integration; exposes `sanity:client` for GROQ at build time — there is no npm package named `@astrojs/sanity`). Document `SANITY_PROJECT_ID`, `SANITY_API_READ_TOKEN`, `SANITY_DATASET` in README; local dev uses gitignored root `.env`. | `package.json`, `astro.config.*`, README env section. |
 | 3.2 | Single-page layout: sections in order – Header, Hero (live/video + program block), Archive (shows grid + Load More), Artists, About, Footer + Player. Use canino24 template/partials and class names as reference. | `src/pages/index.astro` (or single route) composing section components. |
 | 3.3 | Header: nav, logo (inline SVG from canino24 `static/img/icons/logo.php`), symbol. Convert header SCSS to Astro scoped CSS. | `src/components/Header.astro` (or similar). |
 | 3.4 | Hero + Program: live embed (YouTube iframe from `live`/`link`), program schedule (events → date, shows with schedule + title). Convert program SCSS to scoped CSS. | `src/components/Hero.astro`, `src/components/Program.astro`. |
 | 3.5 | Archive: grid of shows (event date, show title, image, SoundCloud); "Load More" (e.g. 30 per chunk). Convert shows SCSS to scoped CSS. | `src/components/Archive.astro` (or `Shows.astro`). |
 | 3.6 | Artists: list A–Z. Convert artists SCSS to scoped CSS. | `src/components/Artists.astro`. |
 | 3.7 | About: main block (fixed or from CMS) + popup (from Settings: about + contact). Convert about + info/popup SCSS to scoped CSS. | `src/components/About.astro`, popup behaviour. |
-| 3.8 | Footer + Player: `#player` with default SoundCloud iframe; clicking an archive show replaces player content with that show's embed. Convert footer/player SCSS to scoped CSS. | `src/components/Footer.astro`, `src/components/Player.astro`. |
+| 3.8 | Footer + Player: `#player` empty by default; clicking an archive show injects that show's SoundCloud embed. Convert footer/player SCSS to scoped CSS. | `src/components/Footer.astro`, `src/components/Player.astro`. |
 | 3.9 | JS (vanilla, in Astro `<script>`): about popup open/close, anchor scroll, show click → update player iframe, Load More. No jQuery. | Behaviour matching current site. |
 | 3.10 | Assets: logo/symbol/teeth as inline SVG in components; show images from Sanity URLs or migrated paths. | No PHP; SVGs in Astro. |
-| 3.11 | Data: fetch from Sanity at build; flatten events → shows for archive. Use TypeScript types for Sanity documents if desired. | `src/lib/sanity.ts` (or similar), types, usage in components. |
+| 3.11 | Data: fetch from Sanity at build (via `@sanity/astro` → `sanity:client`); flatten events → shows for archive. Use TypeScript types for Sanity documents if desired. | `src/lib/sanity.ts` (or similar), types, usage in components. |
 | 3.12 | **Update README:** Ensure "For developers" matches the real repo: correct `src/` and config layout, working `pnpm install` / `pnpm dev` / `pnpm build` commands, and remove any "(Requires the Astro project to be set up)" or similar placeholders. | `README.md` "For developers" section. |
 
 ---

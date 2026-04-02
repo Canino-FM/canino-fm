@@ -1,0 +1,68 @@
+---
+interface Props {
+	names: string[]
+}
+
+const { names } = Astro.props
+---
+
+<section id="artists" class="artists">
+	<div class="artists__container">
+		<div class="grid">
+			{
+				names.map((name: string) => (
+					<article class="artist">
+						<h2 class="title">{name}</h2>
+					</article>
+				))
+			}
+		</div>
+	</div>
+</section>
+
+<style is:global>
+	.artists {
+		display: none;
+	}
+
+	.artists__container {
+		padding: calc(120 / 1920 * 100vw) calc(10 / 1920 * 100vw);
+	}
+
+	@media (max-width: 767px) {
+		.artists__container {
+			padding: calc(80 / 375 * 100vw) calc(5 / 375 * 100vw);
+		}
+	}
+
+	.artists .grid {
+		display: grid;
+		grid-template-columns: repeat(3, 1fr);
+		column-gap: calc(10 / 1920 * 100vw);
+		row-gap: 0.05em;
+	}
+
+	@media (max-width: 767px) {
+		.artists .grid {
+			display: block;
+		}
+	}
+
+	.artists .artist .title {
+		margin: 0;
+		font-size: calc(42 / 1920 * 100vw);
+		line-height: 0.91;
+		letter-spacing: -0.03em;
+		font-weight: 500;
+	}
+
+	@media (max-width: 767px) {
+		.artists .artist .title {
+			font-size: calc(24 / 375 * 100vw);
+		}
+	}
+
+	body.no-transitions .artists {
+		display: block;
+	}
+</style>

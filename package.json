@@ -1,0 +1,23 @@
+{
+	"name": "canino-fm",
+	"type": "module",
+	"version": "0.0.1",
+	"private": true,
+	"scripts": {
+		"dev": "astro dev",
+		"build": "astro build",
+		"preview": "astro preview"
+	},
+	"dependencies": {
+		"@sanity/astro": "^3.3.1",
+		"@sanity/client": "^7.20.0",
+		"@sanity/image-url": "^2.1.1"
+	},
+	"devDependencies": {
+		"@astrojs/check": "^0.9.8",
+		"astro": "^6.1.3",
+		"typescript": "~6.0.2",
+		"vite": "^7.3.1"
+	},
+	"packageManager": "pnpm@10.33.0"
+}

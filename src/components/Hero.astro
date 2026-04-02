@@ -1,0 +1,88 @@
+---
+import Program from '@/components/Program.astro'
+import type { ProgramDoc } from '@/lib/sanity'
+
+interface Props {
+	program: ProgramDoc
+	heroVideoHtml: string | null
+	heroIframeSrc: string | null
+}
+
+const { program, heroVideoHtml, heroIframeSrc } = Astro.props
+---
+
+<section id="program" class="hero">
+	<div class="video">
+		{
+			heroVideoHtml ? (
+				<div class="video__embed" set:html={heroVideoHtml} />
+			) : heroIframeSrc ? (
+				<iframe
+					width="560"
+					height="315"
+					src={heroIframeSrc}
+					title="YouTube video player"
+					allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture; web-share"
+					referrerpolicy="strict-origin-when-cross-origin"
+					allowfullscreen
+				/>
+			) : null
+		}
+	</div>
+	<Program program={program} />
+</section>
+
+<style is:global>
+	.hero {
+		position: relative;
+		display: flex;
+		height: 100vh;
+		padding-top: calc(100vh - 100px - 550 / 1920 * 100vw);
+		opacity: 0;
+		pointer-events: none;
+		transition: opacity 0.2s ease;
+	}
+
+	@media (max-width: 767px) {
+		.hero {
+			display: block;
+			height: auto;
+			padding: 0;
+		}
+	}
+
+	body.no-transitions .hero {
+		opacity: 1;
+		pointer-events: all;
+	}
+
+	.hero .video {
+		width: calc(965 / 1920 * 100vw);
+		padding: 0 calc(10 / 1920 * 100vw);
+	}
+
+	@media (max-width: 767px) {
+		.hero .video {
+			position: relative;
+			top: unset;
+			bottom: unset;
+			left: unset;
+			width: 100%;
+			padding: calc(80 / 375 * 100vw) calc(5 / 375 * 100vw) 0;
+		}
+	}
+
+	.hero .video iframe,
+	.hero .video__embed iframe {
+		width: 100%;
+		height: calc(540 / 1920 * 100vw);
+		border: 0;
+	}
+
+	@media (max-width: 767px) {
+		.hero .video iframe,
+		.hero .video__embed iframe {
+			height: calc(213 / 375 * 100vw);
+		}
+	}
+</style>

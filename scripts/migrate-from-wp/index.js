@@ -156,7 +156,6 @@ function extractSettings(meta, options) {
     contact: themeOpts.contact || '',
     live: hero.live,
     link: hero.link,
-    defaultPlayerEmbed: pageMeta.soundcloud || '',
   }
 }
 
@@ -324,6 +323,11 @@ async function pushShowImages(client, manifest, { skipIfHasImage, imageBaseUrl }
   let failed = 0
   for (const row of manifest) {
     if (!row.relativePath) {
+      console.log(
+        'Skip image (no featured image in WP)',
+        row.sanityDocumentId,
+        row.showTitle ? `— ${row.showTitle}` : ''
+      )
       skipped++
       continue
     }
@@ -366,6 +370,9 @@ async function pushShowImages(client, manifest, { skipIfHasImage, imageBaseUrl }
     }
   }
   console.log(`Image pass: ${uploaded} uploaded, ${skipped} skipped, ${failed} failed`)
+  if (skipped > 0) {
+    console.log('Tip: open output/show-images-manifest.json and filter by status (e.g. no_thumbnail, file_missing).')
+  }
   if (failed > 0) process.exitCode = 1
 }
 

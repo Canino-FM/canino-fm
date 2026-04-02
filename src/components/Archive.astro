@@ -1,0 +1,168 @@
+---
+import type { ArchiveShow } from '@/lib/sanity'
+
+interface Props {
+	chunks: ArchiveShow[][]
+}
+
+const { chunks } = Astro.props
+---
+
+<section id="shows" class="section shows">
+	<div class="shows__container">
+		{
+			chunks.map((group: ArchiveShow[], index: number) => (
+				<div class:list={['group', { active: index === 0, loaded: false }]}>
+					<div class="grid">
+						{group.map((show: ArchiveShow) => (
+							<article class="show" data-soundcloud={show.soundcloudSrc}>
+								<div class="image cover">
+									{show.imageUrl ? (
+										<img src={show.imageUrl} alt="" loading="lazy" width="600" height="600" />
+									) : null}
+								</div>
+								<div class="info">
+									<p class="date">{show.eventDate}</p>
+									<h2 class="title">{show.showTitle}</h2>
+								</div>
+							</article>
+						))}
+					</div>
+					{index !== chunks.length - 1 ? (
+						<div class="wrapper">
+							<span class="load-more" role="button" tabindex="0">
+								Load More
+							</span>
+						</div>
+					) : null}
+				</div>
+			))
+		}
+	</div>
+</section>
+
+<style is:global>
+	.shows {
+		display: none;
+	}
+
+	.shows__container {
+		padding: calc(120 / 1920 * 100vw) calc(10 / 1920 * 100vw) calc(10 / 1920 * 100vw);
+	}
+
+	@media (max-width: 767px) {
+		.shows__container {
+			padding: calc(80 / 375 * 100vw) calc(5 / 375 * 100vw) 0;
+		}
+	}
+
+	.shows .group {
+		display: none;
+		padding-top: calc(10 / 1920 * 100vw);
+	}
+
+	.shows .group:first-child {
+		padding-top: 0;
+	}
+
+	.shows .group .wrapper {
+		display: none;
+		padding: calc(70 / 1920 * 100vw) calc(10 / 1920 * 100vw);
+	}
+
+	@media (max-width: 767px) {
+		.shows .group .wrapper {
+			padding: calc(20 / 375 * 100vw) calc(5 / 375 * 100vw);
+		}
+	}
+
+	.shows .group .wrapper .load-more {
+		display: block;
+		padding: calc(5 / 1920 * 100vw) calc(10 / 1920 * 100vw);
+		background: #000;
+		color: #fff;
+		text-transform: uppercase;
+		text-align: center;
+		cursor: pointer;
+	}
+
+	@media (min-width: 768px) {
+		.shows .group .wrapper .load-more {
+			margin: 0 auto;
+			width: fit-content;
+		}
+	}
+
+	.shows .group.active {
+		display: block;
+	}
+
+	.shows .group.active .wrapper {
+		display: block !important;
+	}
+
+	.shows .group.loaded {
+		display: block;
+	}
+
+	.shows .grid {
+		display: grid;
+		grid-template-columns: repeat(6, 1fr);
+		column-gap: calc(10 / 1920 * 100vw);
+		gap: calc(20 / 1920 * 100vw) calc(10 / 1920 * 100vw);
+	}
+
+	@media (max-width: 767px) {
+		.shows .grid {
+			grid-template-columns: 1fr 1fr;
+			column-gap: calc(5 / 375 * 100vw);
+			gap: calc(10 / 375 * 100vw) calc(5 / 375 * 100vw);
+		}
+	}
+
+	.shows .show {
+		cursor: pointer;
+		/* Let 1fr columns stay equal; long titles otherwise inflate min-content width */
+		min-width: 0;
+	}
+
+	.shows .show .image {
+		position: relative;
+		aspect-ratio: 1 / 1;
+		background: #000;
+		overflow: hidden;
+	}
+
+	.shows .show .image img {
+		position: absolute;
+		top: 0;
+		left: 0;
+		width: 100%;
+		height: 100%;
+		object-fit: cover;
+		transition:
+			transform 0.2s ease,
+			filter 0.2s ease;
+	}
+
+	.shows .show .info {
+		min-width: 0;
+		padding: calc(10 / 1920 * 100vw) calc(10 / 1920 * 100vw) 0 0;
+	}
+
+	.shows .show:hover .image img {
+		transform: scale(1.1);
+		filter: blur(5px);
+	}
+
+	.shows .show .title {
+		margin: 0;
+		font: inherit;
+		text-transform: uppercase;
+		overflow-wrap: break-word;
+	}
+
+	body.no-transitions .shows {
+		display: block;
+	}
+</style>

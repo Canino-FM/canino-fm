@@ -1,0 +1,149 @@
+---
+import type { SettingsDoc } from '@/lib/sanity'
+
+interface Props {
+	settings: SettingsDoc
+}
+
+const { settings } = Astro.props
+const aboutHtml = settings.about?.trim() ?? ''
+const contactEmail = settings.contact?.trim() ?? ''
+---
+
+<div class="about">
+	<div class="about__container">
+		{aboutHtml ? <div class="text" set:html={aboutHtml} /> : null}
+		<div class="credits">
+			<div class="block team">
+				<p class="label">Contacts</p>
+				<ul class="list">
+					<li class="item">{contactEmail}</li>
+				</ul>
+			</div>
+			<div class="block thanks">
+				<p class="label">Credits</p>
+				<ul class="list">
+					<li class="item">Graphic design by Mónica Losada</li>
+					<li class="item">Web Development by Pablo Huertas</li>
+				</ul>
+			</div>
+		</div>
+	</div>
+</div>
+
+<style is:global>
+	.about .thanks .item {
+		white-space: nowrap;
+	}
+
+	.about {
+		position: fixed;
+		top: 0;
+		left: 0;
+		z-index: 1;
+		width: 100%;
+		height: 100vh;
+		background: #fff;
+		opacity: 0;
+		pointer-events: none;
+		transition: opacity 0.2s ease;
+		overflow-y: auto;
+	}
+
+	@media (max-width: 767px) {
+		.about {
+			height: auto;
+		}
+	}
+
+	.about__container {
+		display: flex;
+		padding: calc(120 / 1920 * 100vw) calc(10 / 1920 * 100vw) calc(10 / 1920 * 100vw)
+			calc(10 / 1920 * 100vw);
+	}
+
+	@media (max-width: 767px) {
+		.about__container {
+			display: block;
+			min-height: 100vh;
+			overflow-y: auto;
+			padding: calc(80 / 375 * 100vw) calc(5 / 375 * 100vw);
+		}
+	}
+
+	.about .text {
+		width: calc(965 / 1920 * 100vw);
+		padding-right: calc(40 / 1920 * 100vw);
+		font-size: calc(42 / 1920 * 100vw);
+		line-height: 0.91;
+		letter-spacing: -0.03em;
+		font-weight: 500;
+	}
+
+	@media (max-width: 767px) {
+		.about .text {
+			width: 100%;
+			padding-right: 0;
+			margin-bottom: calc(20 / 375 * 100vw);
+			font-size: calc(12 / 375 * 100vw);
+		}
+	}
+
+	.about .text > * {
+		margin-bottom: 0.91em;
+	}
+
+	.about .text > *:last-child {
+		margin: 0;
+	}
+
+	.about .credits {
+		display: flex;
+		flex-wrap: wrap;
+		height: 100%;
+		padding: calc(10 / 1920 * 100vw) calc(10 / 1920 * 100vw) 0 0;
+		text-transform: uppercase;
+	}
+
+	@media (max-width: 767px) {
+		.about .credits {
+			display: block;
+			padding: 0;
+		}
+	}
+
+	.about .credits .block {
+		width: 60%;
+		margin-bottom: calc(44 / 1920 * 100vw);
+	}
+
+	@media (max-width: 767px) {
+		.about .credits .block {
+			width: 50%;
+			margin-bottom: calc(20 / 375 * 100vw);
+		}
+	}
+
+	.about .credits .label {
+		margin-bottom: calc(22 / 1920 * 100vw);
+	}
+
+	@media (max-width: 767px) {
+		.about .credits .label {
+			margin-bottom: calc(10 / 375 * 100vw);
+		}
+	}
+
+	.about .credits .item {
+		margin-bottom: calc(4 / 1920 * 100vw);
+	}
+
+	.about .credits .item:last-child {
+		margin: 0;
+	}
+
+	body.show-about .about {
+		opacity: 1;
+		pointer-events: all;
+	}
+</style>

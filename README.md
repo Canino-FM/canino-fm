@@ -40,45 +40,53 @@ When you **publish** changes in Sanity, the live site rebuilds automatically and
 ### What this repo is
 
 - **Stack:** Astro (static site), Sanity (headless CMS), Netlify (hosting). Package manager: **pnpm**.
+- **Sanity in Astro:** [`@sanity/astro`](https://www.sanity.io/plugins/sanity-astro) is configured in `astro.config.mjs` (project, dataset, read token). Pages use the virtual module `sanity:client` for GROQ (`src/lib/sanity.ts`). There is no npm package `@astrojs/sanity`; that name sometimes appears in older notes but the maintained integration is `@sanity/astro`.
 - **Build:** Astro's default build (Vite). Content is fetched from Sanity at build time; no content is stored in the repo.
 - **Docs:** Full migration plan and decisions: **`docs/PLAN.md`**. Task breakdown and phases: **`docs/TASKS.md`**.
 
 ### Running the site locally
 
-*(Requires the Astro project to be set up — see Phase 3 in `docs/TASKS.md`.)*
-
 ```bash
 # Install dependencies (use pnpm)
 pnpm install
 
-# Run the dev server
+# Run the dev server (http://localhost:4321)
 pnpm dev
 
-# Build for production (output in dist/)
+# Production build (static HTML in dist/)
 pnpm build
+
+# Preview the production build locally
+pnpm preview
 ```
+
+You may see Vite messages about failing to pre-bundle optional Studio-related packages (`react-is`, `styled-components`, etc.). That is expected if you are **not** embedding Sanity Studio on an Astro route; the homepage build does not need them.
 
 ### Environment variables
 
-The site needs Sanity credentials to fetch content. **These must not be committed to the repo.**
+See Astro’s **[Using environment variables](https://docs.astro.build/en/guides/environment-variables/)** guide.
 
-- **Locally:** Add a `.env` file at the repo root (gitignored) with the variables below for development only.
-- **Production (Netlify):** Set these in Netlify: **Site settings → Environment variables.**
+**Do not commit** API tokens or `.env` files.
+
+- **Locally:** Add a `.env` file in the **repo root** with the variables below.
+- **Netlify:** **Site settings → Environment variables** — use the same names.
 
 | Variable | Description |
 |----------|-------------|
-| `SANITY_PROJECT_ID` | Your Sanity project ID (from Sanity dashboard). |
-| `SANITY_API_READ_TOKEN` | Read-only API token (Viewer) for the build. |
-| `SANITY_DATASET` | Dataset name (usually `production`). |
+| `SANITY_PROJECT_ID` | Sanity project ID (from the Sanity dashboard or `cms/sanity.config.ts`). |
+| `SANITY_API_READ_TOKEN` | Read-only API token (Viewer) so the build can run GROQ queries. |
+| `SANITY_DATASET` | Dataset name (e.g. `production` or `stage`). Optional in `.env`; defaults to `production` in the Sanity integration config if unset. |
 
-See **"Account and service setup"** in `docs/PLAN.md` for how to create the Sanity project and tokens, and how to connect Netlify to this repo.
+See **"Account and service setup"** in `docs/PLAN.md` for creating the Sanity project and tokens and connecting Netlify.
 
-### Repo layout (after full setup)
+### Repo layout
 
-- **`src/`** — Astro pages, components, and styles (scoped CSS). Data is fetched from Sanity at build time.
-- **`cms/`** — Sanity Studio (schema, config). Run from this folder for local Studio dev or deploy to `*.sanity.studio`. To add or change content types, see **`docs/CONTENT_TYPES.md`**.
-- **`scripts/migrate-from-wp/`** — One-off WordPress SQL → JSON / Sanity import. See **`scripts/migrate-from-wp/README.md`**.
-- **`docs/`** — `PLAN.md` (migration plan), `TASKS.md` (phases), `CONTENT_TYPES.md` (schema roadmap), `EDITING.md` (content guide for admins — Phase 4). `docs/wp/` is the reference WordPress theme (canino24), not used in the build.
+- **`src/`** — Astro app: `pages/index.astro` (homepage), `components/`, `layouts/BaseLayout.astro`, `lib/sanity.ts` (GROQ via `sanity:client`, `@sanity/image-url`, archive flattening).
+- **`public/`** — Static assets served as-is (favicons: `favicon.svg` plus PNG variants; `fonts/AkzidenzGrotesk/` for the typeface).
+- **`astro.config.mjs`** — `output: 'static'`, `@sanity/astro`, and Vite `loadEnv` for Sanity options.
+- **`cms/`** — Sanity Studio (schema, config). Run Studio from this folder; see **`docs/CONTENT_TYPES.md`** for schema changes.
+- **`scripts/migrate-from-wp/`** — WordPress SQL → JSON / Sanity import. See **`scripts/migrate-from-wp/README.md`**.
+- **`docs/`** — `PLAN.md`, `TASKS.md`, `CONTENT_TYPES.md`, and (Phase 4) `EDITING.md`. **`docs/wp/`** is the reference WordPress theme only; it is not part of the Astro build.
 
 ### Deploy
 

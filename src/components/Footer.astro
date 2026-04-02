@@ -1,0 +1,31 @@
+---
+import Player from '@/components/Player.astro'
+---
+
+<footer class="footer">
+	<div class="footer__container">
+		<Player />
+	</div>
+</footer>
+
+<style is:global>
+	.footer {
+		position: fixed;
+		bottom: -100px;
+		left: 0;
+		z-index: 10;
+		width: 100%;
+		transition: bottom 0.5s ease 0.5s;
+	}
+
+	body.animated .footer {
+		bottom: 0;
+	}
+
+	@media (max-width: 767px) {
+		body.show-about .footer {
+			bottom: -100px;
+			transition-delay: 0s;
+		}
+	}
+</style>

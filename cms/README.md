@@ -29,6 +29,14 @@ pnpm deploy
 
 Use the Sanity CLI when prompted, or rely on the hosted Studio URL above after deploy.
 
+## Deploy schema to the dataset
+
+After changing `schemaTypes/`, push the schema to Sanity:
+
+```bash
+pnpm deploy:schema
+```
+
 ## Further reading
 
 - [Sanity documentation](https://www.sanity.io/docs)

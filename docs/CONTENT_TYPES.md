@@ -12,7 +12,7 @@ This doc is a **roadmap** for extending the Canino FM Sanity schema beyond the i
 | **Event** | One per broadcast date; references Shows. Build flattens events → shows for the archive grid. |
 | **Show** | Title, image, SoundCloud embed. Referenced by Events. |
 | **Artist** | Name only (A–Z list). |
-| **Settings** | Singleton: about popup, contact email, live hero embed, optional default player. |
+| **Settings** | Singleton: about popup, contact email, live hero embed. |
 
 Schema files live in **`cms/schemaTypes/`**. The Studio structure is in **`cms/structure.ts`** (singletons: Settings, Program; then Events, Shows, Artists).
 
