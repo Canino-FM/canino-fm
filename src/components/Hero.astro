@@ -51,7 +51,8 @@ const { program, heroVideoHtml, heroIframeSrc } = Astro.props
 		}
 	}
 
-	body.no-transitions .hero {
+	body.no-transitions .hero,
+	body.skip-intro .hero {
 		opacity: 1;
 		pointer-events: all;
 	}

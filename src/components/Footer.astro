@@ -18,8 +18,13 @@ import Player from '@/components/Player.astro'
 		transition: bottom 0.5s ease 0.5s;
 	}
 
-	body.animated .footer {
+	body.animated .footer,
+	body.skip-intro .footer {
 		bottom: 0;
+	}
+
+	body.skip-intro .footer {
+		transition: none;
 	}
 
 	@media (max-width: 767px) {

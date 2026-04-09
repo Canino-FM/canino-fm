@@ -12,7 +12,7 @@ const data = await fetchHomePageData()
 const archiveChunks = chunkArchiveShows(data.archiveShows, 30)
 ---
 
-<BaseLayout>
+<BaseLayout skipIntro={import.meta.env.DEV}>
 	<Header />
 	<main class="main">
 		<div class="main__container">
@@ -31,17 +31,19 @@ const archiveChunks = chunkArchiveShows(data.archiveShows, 30)
 		;(function () {
 			const body = document.body
 
-			window.setTimeout(function () {
-				body.classList.add('loaded')
-			}, 1000)
+			if (!body.classList.contains('skip-intro')) {
+				window.setTimeout(function () {
+					body.classList.add('loaded')
+				}, 1000)
 
-			window.setTimeout(function () {
-				body.classList.add('animated')
-			}, 2000)
+				window.setTimeout(function () {
+					body.classList.add('animated')
+				}, 2000)
 
-			window.setTimeout(function () {
-				body.classList.add('no-transitions')
-			}, 2500)
+				window.setTimeout(function () {
+					body.classList.add('no-transitions')
+				}, 2500)
+			}
 
 			document.querySelectorAll('.button--about').forEach(function (btn) {
 				function toggleAbout() {
