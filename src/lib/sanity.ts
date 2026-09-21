@@ -22,11 +22,17 @@ export interface SettingsDoc {
 	link?: string
 }
 
+interface ArtistRef {
+	_id: string
+	name?: string
+}
+
 interface ShowRef {
 	_id: string
 	title?: string
 	image?: Record<string, unknown> | null
 	soundcloud?: string
+	artists?: ArtistRef[] | null
 }
 
 interface EventDoc {
@@ -36,7 +42,14 @@ interface EventDoc {
 }
 
 interface ArtistDoc {
+	_id: string
 	name?: string
+}
+
+export interface ArchiveShowArtist {
+	id: string
+	name: string
+	slug: string
 }
 
 export interface ArchiveShow {
@@ -44,6 +57,26 @@ export interface ArchiveShow {
 	showTitle: string
 	imageUrl: string | null
 	soundcloudSrc: string
+	artists: ArchiveShowArtist[]
+}
+
+export interface SiteArtist {
+	id: string
+	name: string
+	slug: string
+}
+
+/** Lowercase, strip diacritics, collapse anything non-alphanumeric into single hyphens. */
+export function slugify(name: string): string {
+	return (
+		name
+			.toLowerCase()
+			.trim()
+			.normalize('NFKD')
+			.replace(/\p{Diacritic}/gu, '')
+			.replace(/[^a-z0-9]+/g, '-')
+			.replace(/^-+|-+$/g, '') || 'artist'
+	)
 }
 
 const programQuery = `*[_type == "program"][0]{
@@ -57,10 +90,14 @@ const settingsQuery = `*[_type == "settings"][0]{
 const eventsQuery = `*[_type == "event"]{
   _id,
   date,
-  shows[]->{ _id, title, image, soundcloud }
+  shows[]->{ _id, title, image, soundcloud, artists[]->{ _id, name } }
 }`
 
-const artistsQuery = `*[_type == "artist"] | order(name asc) {
+// Sorted client-side (see siteArtists below) rather than with GROQ's `order(name asc)`,
+// which sorts by raw codepoint — case-sensitive and diacritic-sensitive, so e.g. all-caps
+// names like "ALVVA" cluster together instead of interleaving alphabetically.
+const artistsQuery = `*[_type == "artist"] {
+  _id,
   name
 }`
 
@@ -77,7 +114,7 @@ export async function fetchHomePageData() {
 		sanityClient.fetch<ProgramDoc | null>(programQuery),
 		sanityClient.fetch<SettingsDoc | null>(settingsQuery),
 		sanityClient.fetch<EventDoc[]>(eventsQuery),
-		sanityClient.fetch<Pick<ArtistDoc, 'name'>[]>(artistsQuery),
+		sanityClient.fetch<ArtistDoc[]>(artistsQuery),
 	])
 
 	const builder = createImageUrlBuilder(sanityClient)
@@ -106,6 +143,9 @@ export async function fetchHomePageData() {
 				showTitle: s.title ?? '',
 				imageUrl: urlFor(s.image),
 				soundcloudSrc: normalizeSoundcloudColor(raw),
+				artists: (s.artists ?? [])
+					.filter((a): a is ArtistRef & { name: string } => Boolean(a?._id && a.name))
+					.map((a) => ({ id: a._id, name: a.name, slug: slugify(a.name) })),
 			})
 		}
 	}
@@ -115,14 +155,32 @@ export async function fetchHomePageData() {
 			? settings.live
 			: null
 
+	const siteArtists: SiteArtist[] = (artists ?? [])
+		.filter((a): a is ArtistDoc & { name: string } => Boolean(a?._id && a.name))
+		.map((a) => ({ id: a._id, name: a.name, slug: slugify(a.name) }))
+		.sort((a, b) => a.name.localeCompare(b.name, undefined, { sensitivity: 'base' }))
+
 	return {
 		program: program ?? { events: [] },
 		settings: settings ?? {},
 		archiveShows,
-		artists: (artists ?? []).map((a: Pick<ArtistDoc, 'name'>) => a.name).filter(Boolean) as string[],
+		artists: siteArtists,
 		heroVideoHtml,
 		heroIframeSrc: heroVideoHtml ? null : resolveHeroIframeSrc(settings),
 	}
+}
+
+/** Groups archive shows by linked artist id, for artist pages and the "has a page" check. */
+export function groupShowsByArtist(shows: ArchiveShow[]): Map<string, ArchiveShow[]> {
+	const map = new Map<string, ArchiveShow[]>()
+	for (const show of shows) {
+		for (const artist of show.artists) {
+			const list = map.get(artist.id)
+			if (list) list.push(show)
+			else map.set(artist.id, [show])
+		}
+	}
+	return map
 }
 
 /** DD.MM.YY or DD.MM.YYYY → sortable number (approximate year 2000+). */

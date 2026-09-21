@@ -1,18 +1,27 @@
 ---
+import type { ArchiveShow, SiteArtist } from '@/lib/sanity'
+
 interface Props {
-	names: string[]
+	artists: SiteArtist[]
+	showsByArtist: Map<string, ArchiveShow[]>
 }
 
-const { names } = Astro.props
+const { artists, showsByArtist } = Astro.props
 ---
 
 <section id="artists" class="artists">
 	<div class="artists__container">
 		<div class="grid">
 			{
-				names.map((name: string) => (
+				artists.map((artist: SiteArtist) => (
 					<article class="artist">
-						<h2 class="title">{name}</h2>
+						{showsByArtist.has(artist.id) ? (
+							<a href={`/artists/${artist.slug}`}>
+								<h2 class="title">{artist.name}</h2>
+							</a>
+						) : (
+							<h2 class="title">{artist.name}</h2>
+						)}
 					</article>
 				))
 			}
@@ -46,6 +55,10 @@ const { names } = Astro.props
 		.artists .grid {
 			display: block;
 		}
+	}
+
+	.artists .artist a {
+		display: block;
 	}
 
 	.artists .artist .title {

@@ -31,5 +31,11 @@ export const show = defineType({
       type: 'text',
       description: 'SoundCloud iframe HTML or embed URL. Build-time will parse iframe src for the player.',
     }),
+    defineField({
+      name: 'artists',
+      title: 'Artists',
+      type: 'array',
+      of: [{ type: 'reference', to: [{ type: 'artist' }] }],
+    }),
   ],
 })

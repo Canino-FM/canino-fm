@@ -1,0 +1,63 @@
+---
+import type { ArchiveShow } from '@/lib/sanity'
+
+interface Props {
+	show: ArchiveShow
+}
+
+const { show } = Astro.props
+---
+
+<article class="show" data-soundcloud={show.soundcloudSrc}>
+	<div class="image cover">
+		{show.imageUrl ? <img src={show.imageUrl} alt="" loading="lazy" width="600" height="600" /> : null}
+	</div>
+	<div class="info">
+		<p class="date">{show.eventDate}</p>
+		<h2 class="title">{show.showTitle}</h2>
+	</div>
+</article>
+
+<style is:global>
+	.show {
+		cursor: pointer;
+		/* Let 1fr columns stay equal; long titles otherwise inflate min-content width */
+		min-width: 0;
+	}
+
+	.show .image {
+		position: relative;
+		aspect-ratio: 1 / 1;
+		background: #000;
+		overflow: hidden;
+	}
+
+	.show .image img {
+		position: absolute;
+		top: 0;
+		left: 0;
+		width: 100%;
+		height: 100%;
+		object-fit: cover;
+		transition:
+			transform 0.2s ease,
+			filter 0.2s ease;
+	}
+
+	.show .info {
+		min-width: 0;
+		padding: calc(10 / 1920 * 100vw) calc(10 / 1920 * 100vw) 0 0;
+	}
+
+	.show:hover .image img {
+		transform: scale(1.1);
+		filter: blur(5px);
+	}
+
+	.show .title {
+		margin: 0;
+		font: inherit;
+		text-transform: uppercase;
+		overflow-wrap: break-word;
+	}
+</style>

@@ -1,0 +1,129 @@
+---
+import BaseLayout from '@/layouts/BaseLayout.astro'
+import Header from '@/components/Header.astro'
+import Footer from '@/components/Footer.astro'
+import Player from '@/components/Player.astro'
+import ShowCard from '@/components/ShowCard.astro'
+import Search from '@/components/Search.astro'
+import { fetchHomePageData, groupShowsByArtist, type ArchiveShow, type SiteArtist } from '@/lib/sanity'
+
+export async function getStaticPaths() {
+	const data = await fetchHomePageData()
+	const showsByArtist = groupShowsByArtist(data.archiveShows)
+	const linkedArtists = data.artists.filter((artist) => showsByArtist.has(artist.id))
+
+	return linkedArtists.map((artist) => ({
+		params: { id: artist.slug },
+		props: {
+			artistName: artist.name,
+			shows: showsByArtist.get(artist.id)!,
+			allShows: data.archiveShows,
+			allArtists: linkedArtists,
+		},
+	}))
+}
+
+interface Props {
+	artistName: string
+	shows: ArchiveShow[]
+	allShows: ArchiveShow[]
+	allArtists: SiteArtist[]
+}
+
+const { artistName, shows, allShows, allArtists } = Astro.props
+---
+
+<BaseLayout title={`${artistName} — Canino FM`} skipIntro>
+	<Header />
+	<main class="main">
+		<div class="main__container">
+			<section class="artist-page">
+				<div class="artist-page__container">
+					<a class="back" href="/#artists">&larr; Artists</a>
+					<h1 class="name">{artistName}</h1>
+					<div class="grid">
+						{shows.map((show) => <ShowCard show={show} />)}
+					</div>
+				</div>
+			</section>
+		</div>
+	</main>
+	<Search shows={allShows} artists={allArtists} />
+	<Footer />
+	<Player />
+	<script is:inline>
+		;(function () {
+			document.querySelectorAll('.artist-page .show[data-soundcloud]').forEach(function (el) {
+				el.addEventListener('click', function () {
+					const raw = el.getAttribute('data-soundcloud') || ''
+					const src = raw.replace(/%23ff5500/gi, '%23000000')
+					if (!src) return
+					const player = document.getElementById('player')
+					if (!player) return
+					player.replaceChildren()
+					const iframe = document.createElement('iframe')
+					iframe.width = '100%'
+					iframe.height = '100'
+					iframe.setAttribute('scrolling', 'no')
+					iframe.setAttribute('frameborder', 'no')
+					iframe.setAttribute('allow', 'autoplay')
+					iframe.src = src
+					player.appendChild(iframe)
+				})
+			})
+		})()
+	</script>
+</BaseLayout>
+
+<style is:global>
+	.artist-page__container {
+		padding: calc(120 / 1920 * 100vw) calc(10 / 1920 * 100vw) calc(10 / 1920 * 100vw);
+	}
+
+	@media (max-width: 767px) {
+		.artist-page__container {
+			padding: calc(80 / 375 * 100vw) calc(5 / 375 * 100vw) 0;
+		}
+	}
+
+	.artist-page .back {
+		display: inline-block;
+		margin-bottom: calc(20 / 1920 * 100vw);
+		text-transform: uppercase;
+		cursor: pointer;
+	}
+
+	.artist-page .name {
+		margin: 0 0 calc(40 / 1920 * 100vw);
+		font-size: calc(64 / 1920 * 100vw);
+		line-height: 0.91;
+		letter-spacing: -0.03em;
+		text-transform: uppercase;
+	}
+
+	@media (max-width: 767px) {
+		.artist-page .back {
+			margin-bottom: calc(20 / 375 * 100vw);
+		}
+
+		.artist-page .name {
+			font-size: calc(32 / 375 * 100vw);
+			margin-bottom: calc(20 / 375 * 100vw);
+		}
+	}
+
+	.artist-page .grid {
+		display: grid;
+		grid-template-columns: repeat(6, 1fr);
+		column-gap: calc(10 / 1920 * 100vw);
+		gap: calc(20 / 1920 * 100vw) calc(10 / 1920 * 100vw);
+	}
+
+	@media (max-width: 767px) {
+		.artist-page .grid {
+			grid-template-columns: 1fr 1fr;
+			column-gap: calc(5 / 375 * 100vw);
+			gap: calc(10 / 375 * 100vw) calc(5 / 375 * 100vw);
+		}
+	}
+</style>

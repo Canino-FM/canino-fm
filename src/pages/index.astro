@@ -5,11 +5,14 @@ import Hero from '@/components/Hero.astro'
 import Archive from '@/components/Archive.astro'
 import Artists from '@/components/Artists.astro'
 import About from '@/components/About.astro'
+import Search from '@/components/Search.astro'
 import Footer from '@/components/Footer.astro'
-import { fetchHomePageData, chunkArchiveShows } from '@/lib/sanity'
+import { fetchHomePageData, chunkArchiveShows, groupShowsByArtist } from '@/lib/sanity'
 
 const data = await fetchHomePageData()
 const archiveChunks = chunkArchiveShows(data.archiveShows, 30)
+const showsByArtist = groupShowsByArtist(data.archiveShows)
+const linkedArtists = data.artists.filter((artist) => showsByArtist.has(artist.id))
 ---
 
 <BaseLayout skipIntro={import.meta.env.DEV}>
@@ -22,8 +25,9 @@ const archiveChunks = chunkArchiveShows(data.archiveShows, 30)
 				heroIframeSrc={data.heroIframeSrc}
 			/>
 			<Archive chunks={archiveChunks} />
-			<Artists names={data.artists} />
+			<Artists artists={data.artists} showsByArtist={showsByArtist} />
 			<About settings={data.settings} />
+			<Search shows={data.archiveShows} artists={linkedArtists} />
 		</div>
 	</main>
 	<Footer />

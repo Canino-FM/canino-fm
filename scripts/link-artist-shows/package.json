@@ -1,0 +1,13 @@
+{
+  "name": "canino-fm-link-artist-shows",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "link": "node index.js",
+    "link:dry": "node index.js --dry-run"
+  },
+  "dependencies": {
+    "@sanity/client": "^6.23.0",
+    "dotenv": "^16.4.7"
+  }
+}
