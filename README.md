@@ -1,6 +1,6 @@
 # Canino FM
 
-Static website for **Canino FM**, built with [Astro](https://astro.build). Content is managed in **Sanity** (no code or Git required to update the site). The site is deployed on **Netlify**. Until the custom domain is connected (Phase 6 in `docs/TASKS.md`), the site is available at the Netlify-provided URL (e.g. *sitename*.netlify.app); after that it will be at [canino.fm](https://canino.fm).
+Static website for **Canino FM**, built with [Astro](https://astro.build). Content is managed in **Sanity** (no code or Git required to update the site). The site is deployed on **Netlify**. Until the custom domain is connected (Phase 7 in `docs/TASKS.md`), the site is available at the Netlify-provided URL (e.g. *sitename*.netlify.app); after that it will be at [canino.fm](https://canino.fm).
 
 This repo is the result of migrating the previous WordPress site to a static, CMS-backed setup. The original WordPress theme and reference files are kept under `docs/wp/` for reference only; they are not used in production.
 
@@ -30,7 +30,7 @@ When you **publish** changes in Sanity, the live site rebuilds automatically and
 
 ### Need more help?
 
-- A step-by-step **content guide** with screenshots is in **`docs/EDITING.md`** *(created in Phase 4)*.
+- A step-by-step **content guide** with screenshots is in **`docs/EDITING.md`** *(created in Phase 5 per `docs/TASKS.md`)*.
 - For technical or access issues, contact your site maintainer or the developer (see credits below).
 
 ---
@@ -86,12 +86,12 @@ See **"Account and service setup"** in `docs/PLAN.md` for creating the Sanity pr
 - **`astro.config.mjs`** — `output: 'static'`, `@sanity/astro`, and Vite `loadEnv` for Sanity options.
 - **`cms/`** — Sanity Studio (schema, config). Run Studio from this folder; see **`docs/CONTENT_TYPES.md`** for schema changes.
 - **`scripts/migrate-from-wp/`** — WordPress SQL → JSON / Sanity import. See **`scripts/migrate-from-wp/README.md`**.
-- **`docs/`** — `PLAN.md`, `TASKS.md`, `CONTENT_TYPES.md`, and (Phase 4) `EDITING.md`. **`docs/wp/`** is the reference WordPress theme only; it is not part of the Astro build.
+- **`docs/`** — `PLAN.md`, `TASKS.md`, `CONTENT_TYPES.md`, and (Phase 5) `EDITING.md`. **`docs/wp/`** is the reference WordPress theme only; it is not part of the Astro build.
 
 ### Deploy
 
 - **Netlify** is connected to this repo. Pushing to the main branch triggers a build (`pnpm build`) and publishes the `dist/` folder.
-- **Sanity → Netlify:** A Sanity webhook can call a Netlify build hook so that when content is published in Sanity, Netlify rebuilds the site automatically. Setup is described in the integration phase in `docs/TASKS.md`.
+- **Sanity → Netlify:** A Sanity webhook can call a Netlify build hook so that when content is published in Sanity, Netlify rebuilds the site automatically. Setup is described in Phase 5 (Integration and docs) in `docs/TASKS.md`.
 
 ---
 

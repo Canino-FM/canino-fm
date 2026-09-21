@@ -1,11 +1,14 @@
 ---
+
 name: Canino FM static site migration
 overview: Migrate the Canino FM WordPress site to a static site built with Astro, content in Sanity, deployed on Netlify. 1:1 UI copy using Astro components and scoped CSS, then a separate pass for WCAG 2.1 AAA. Development with pnpm; Astro's default build (Vite/esbuild) is used unless custom tooling is needed.
 todos:
-  - id: todo-1771595588866-aoo8ynxj9
-    content: ""
-    status: pending
+
+- id: todo-1771595588866-aoo8ynxj9
+content: ""
+status: pending
 isProject: false
+
 ---
 
 # Canino FM: WordPress to static site migration
@@ -106,7 +109,20 @@ List of `name` (string). No extra fields for 1:1.
 - **Player:**  
 Footer `#player` starts empty; clicking an archive show injects the SoundCloud iframe.
 
-**Sanity schema:** Document types for **Program** (repeater: events → date, shows[] with schedule + title), **Events** (date + refs to Shows), **Shows** (title, image, SoundCloud embed), **Artists** (name), **Settings** (about popup text, contact email). Build fetches at build time and flattens as needed; images use Sanity's image pipeline (URL params for size/format).
+**Sanity schema (v1 / Phase 1):** Document types for **Program** (repeater: events → date, shows[] with schedule + title), **Events** (date + refs to Shows), **Shows** (title, image, SoundCloud embed), **Artists** (name), **Settings** (about popup text, contact email). Build fetches at build time and flattens as needed; images use Sanity's image pipeline (URL params for size/format).
+
+### Evolved data model (Phase 4 in TASKS.md)
+
+After the 1:1 Astro site works against v1, refactor the CMS so editors manage **one canonical row per broadcast day** instead of duplicating show titles in the homepage program and using opaque date strings for archive rows.
+
+**Intended direction (implement and name types in Phase 4):**
+
+- **Broadcast day** (new type or evolved `event`): `airDate` as real `date` or `datetime`; optional human `title`; ordered **slots** each with a **reference to `show`**, time range or start/end, and optional `titleOverride`.
+- **Program** (singleton): **references** upcoming broadcast day documents (or equivalent), instead of nested `programEventShow` objects that repeat titles already on `show`.
+- **Show:** `**artists[]`** references to `artist`; optional `**slug`**; **SoundCloud** as URL or small structured object instead of only raw iframe HTML where feasible.
+- **Migration:** Map existing `event` + `program` content into the new shape; preserve `show-{wpPostId}` IDs; dry-run before writing production.
+
+Detailed tasks: [docs/TASKS.md](./TASKS.md) Phase 4.
 
 ---
 
@@ -124,11 +140,11 @@ Footer `#player` starts empty; clicking an archive show injects the SoundCloud i
 
 **Where the files live**
 
-- **On the old server (filesystem):** Uploaded media is under **`wp-content/uploads/`**, usually organized by year/month (e.g. `wp-content/uploads/2024/03/show-artwork.jpg`). This is not inside the MySQL dump; you need a backup of the WP site files, or a live URL that still serves those paths.
+- **On the old server (filesystem):** Uploaded media is under `**wp-content/uploads/`**, usually organized by year/month (e.g. `wp-content/uploads/2024/03/show-artwork.jpg`). This is not inside the MySQL dump; you need a backup of the WP site files, or a live URL that still serves those paths.
 - **In the database (metadata only):** For each **show** post, the featured image is **not** the show row’s `guid` (that field is the post permalink). WordPress stores:
-  - In **`wp_postmeta`:** `meta_key = '_thumbnail_id'`, `post_id` = show’s `ID` → `meta_value` = attachment post ID.
-  - For that **attachment** row in **`wp_posts`** (`post_type = 'attachment'`): `guid` is often the full URL to the file (historically).
-  - In **`wp_postmeta`** for the attachment: `meta_key = '_wp_attached_file'` → relative path such as `2024/03/show-artwork.jpg`.
+  - In `**wp_postmeta`:** `meta_key = '_thumbnail_id'`, `post_id` = show’s `ID` → `meta_value` = attachment post ID.
+  - For that **attachment** row in `**wp_posts`** (`post_type = 'attachment'`): `guid` is often the full URL to the file (historically).
+  - In `**wp_postmeta`** for the attachment: `meta_key = '_wp_attached_file'` → relative path such as `2024/03/show-artwork.jpg`.
 
 **Public URL from metadata (if the site is still online)**
 
@@ -137,7 +153,7 @@ Footer `#player` starts empty; clicking an archive show injects the SoundCloud i
 **How to get them into Sanity**
 
 1. **Resolve** for each show: `_thumbnail_id` → attachment ID → `_wp_attached_file` (and/or attachment `guid`) → one HTTP(S) URL or local file path.
-2. **Upload** with the Sanity client: `@sanity/client` **`assets.upload`** (e.g. `client.assets.upload('image', bufferOrStream, { filename: '…' })`), which returns an asset document `_id` (e.g. `image-…`).
+2. **Upload** with the Sanity client: `@sanity/client` `**assets.upload`** (e.g. `client.assets.upload('image', bufferOrStream, { filename: '…' })`), which returns an asset document `_id` (e.g. `image-…`).
 3. **Patch** each `show` document: set `image` to `{ _type: 'image', asset: { _type: 'reference', _ref: '<assetDocumentId>' } }` (same `_id` as `show-${wpPostId}` from migration).
 
 **Current repo caveat:** `scripts/migrate-from-wp/output/image-paths.txt` lists each show’s **post `guid`** (permalink), not the featured image. For automation, extend the migration script to read `_thumbnail_id` and attachment meta, emit real image URLs or paths, then run a small upload script (or use Sanity Studio manually per show). See **TASKS.md** Phase 2 for images.
@@ -158,14 +174,15 @@ Footer `#player` starts empty; clicking an archive show injects the SoundCloud i
 
 ---
 
-## Task split across agents
+## Task split (see TASKS.md for phase numbers)
 
-- **Agent 1 – Data and CMS:**  
+- **Data and CMS (Phase 1):**  
   - Define Sanity schema (document types) for program, events, shows, artists, settings.  
-  - Write migration script (Node or Python) that reads `jocczzlm_canino.sql` and populates Sanity (or outputs JSON for initial import) and list of image paths; use Sanity's image pipeline for show images where possible.  
+  - Write migration script that reads `jocczzlm_canino.sql` and populates Sanity (or outputs JSON for initial import) and list of image paths; use Sanity's image pipeline for show images where possible.  
   - Document "Adding or changing content types" for future (e.g. posts, comments roadmap).  
   - **Update README:** Add Sanity Studio URL in the "For content editors" section once Studio is deployable; add any CMS-specific notes (e.g. dataset name).
-- **Agent 2 – Static site and 1:1 UI:**  
+- **Featured images (Phase 2):** Resolve `_thumbnail_id` → upload assets → patch `show.image` (see TASKS.md).
+- **Static site and 1:1 UI (Phase 3):**  
   - Bootstrap Astro project with pnpm; implement single-page layout: header, hero (video + program block), archive (grid + Load More), artists, about, footer + player.  
   - Use Astro scoped styles (and existing class names from canino24); convert current SCSS to plain CSS in components.  
   - Data: fetch from Sanity at build time; flatten events/shows as needed.  
@@ -173,12 +190,13 @@ Footer `#player` starts empty; clicking an archive show injects the SoundCloud i
   - Assets: logo/symbol as inline SVG in components; show images via Sanity image URLs (or migrated paths during migration).  
   - No a11y changes yet; match current behaviour and visuals exactly.  
   - **Update README:** Ensure "For developers" reflects actual repo layout (`src/`, config files), dev/build commands (`pnpm dev`, `pnpm build`), and remove placeholders that are no longer accurate.
-- **Agent 3 – Integration and docs:**  
+- **CMS data model refactor (Phase 4):** Schema, content migration, Astro/GROQ updates, and editor docs for the evolved model (see *Evolved data model* above and TASKS.md).
+- **Integration and docs (Phase 5):**  
   - Wire Sanity webhook to Netlify build hook so content publishes trigger rebuild; document env (Sanity token, Netlify) and deploy.  
   - **Update README:** Set final Sanity Studio URL, link to EDITING.md (content guide), ensure "How to edit content" and "For developers" are complete and accurate; note Web Development credit "Dylan Kario" where appropriate.  
   - Optional: GitHub Actions for lint (e.g. ESLint) or a11y (report-only); keep secrets in GitHub secrets.
-- **Agent 4 (later) – Accessibility:**  
-  - After 1:1 is committed: audit against WCAG 2.1 AAA; list required fixes (focus, ARIA, contrast, keyboard, iframe titles, etc.); you approve; then implement in a separate pass.  
+- **Accessibility (Phase 6, later):**  
+  - After 1:1 is committed and Phase 4 merged: audit against WCAG 2.1 AAA; list required fixes (focus, ARIA, contrast, keyboard, iframe titles, etc.); you approve; then implement in a separate pass.  
   - **Update README (optional):** If a11y audit or process is documented (e.g. in `docs/A11Y_AUDIT.md`), add a short note or link in the README for maintainers.
 
 ---
@@ -232,7 +250,7 @@ Assume you only have a **personal GitHub** account and an **existing Netlify** a
   - `SANITY_PROJECT_ID` = your Sanity project ID  
   - `SANITY_API_READ_TOKEN` = the read-only (Viewer) token from Sanity  
   - `SANITY_DATASET` = `production` (if not default)
-- **Custom domain (Phase 6 in TASKS.md):** When ready to go live at canino.fm, go to **Domain settings** → **Add custom domain** → `canino.fm`. Netlify will show the required DNS records (e.g. A or CNAME). In your domain registrar, point the domain to Netlify as instructed. Enable HTTPS (Netlify will provision a cert).
+- **Custom domain (Phase 7 in TASKS.md):** When ready to go live at canino.fm, go to **Domain settings** → **Add custom domain** → `canino.fm`. Netlify will show the required DNS records (e.g. A or CNAME). In your domain registrar, point the domain to Netlify as instructed. Enable HTTPS (Netlify will provision a cert).
 - **Build hook (optional):** **Site settings** → **Build & deploy** → **Build hooks** → **Add build hook**. Name it e.g. "Sanity publish". Copy the URL. Later you'll add this URL as a webhook in Sanity so that when someone publishes content, Sanity calls the hook and Netlify triggers a new build.
 
 ### 4. No other accounts
@@ -256,11 +274,12 @@ When you create the new repo **canino-fm** and open it in Cursor, a new chat won
 
 ## Order of operations
 
-1. **Account setup:** Complete the walkthrough above (GitHub org + repo, Sanity project + tokens, Netlify connect + env). Custom domain is Phase 6 in TASKS.md when you are ready to swap the live site.
-2. **Data agent:** Sanity schema + migration script; you run script and import into Sanity, then **run the image pipeline** (resolve `_thumbnail_id` → upload assets → patch `show.image`) so the archive has real images in the content lake.
-3. **UI agent:** New Astro repo (pnpm) in `canino-fm`, 1:1 implementation, no a11y changes.
-4. **Integration agent:** Sanity webhook → Netlify build hook, env docs, README update + content guide (EDITING.md); you point canino.fm to Netlify and test.
-5. **Later:** A11y agent proposes and then implements WCAG 2.1 AAA fixes after you commit the 1:1 baseline; optionally update README with a11y doc links.
+1. **Account setup:** Complete the walkthrough above (GitHub org + repo, Sanity project + tokens, Netlify connect + env). Custom domain is Phase 7 in TASKS.md when you are ready to swap the live site.
+2. **Data / CMS:** Sanity schema + migration script; you run script and import into Sanity, then **run the image pipeline** (Phase 2: resolve `_thumbnail_id` → upload assets → patch `show.image`) so the archive has real images in the content lake.
+3. **UI:** Astro 1:1 implementation (Phase 3), no a11y changes.
+4. **CMS data model refactor (Phase 4):** Evolve schema and content toward broadcast days + referenced program slots; update Astro queries and types.
+5. **Integration:** Sanity webhook → Netlify build hook, env docs, README update + content guide (EDITING.md) (Phase 5); point canino.fm to Netlify when ready (Phase 7).
+6. **Later:** Accessibility pass (Phase 6): propose and implement WCAG 2.1 AAA fixes after approval; optionally update README with a11y doc links.
 
 ---
 
@@ -269,7 +288,6 @@ When you create the new repo **canino-fm** and open it in Cursor, a new chat won
 - **Stack (chosen):** Astro + Sanity + Netlify + GitHub; pnpm; Astro scoped CSS and minimal vanilla JS. Astro's default build (Vite/esbuild) is used; optional TypeScript, ESLint, Prettier (or Biome) for dev.  
 - **Content:** Program, hero (live/link), archive (events + shows + Sanity images + SoundCloud), artists, about/settings; all from Sanity at build time.  
 - **One-off:** Migrate from SQL + **WP uploads folder or fetchable `wp-content/uploads/` URLs** into Sanity assets; show documents reference those assets. No WordPress in production.
-- **Agents:** Data/CMS (Sanity schema + migration) → UI (Astro 1:1) → Integrate/Docs → A11y (separate, after your approval).  
+- **Phases:** Data/CMS → Images (Phase 2) → UI (Astro 1:1) → **Data model refactor (Phase 4)** → Integrate/Docs (Phase 5) → A11y (Phase 6) → Go live (Phase 7). See TASKS.md.  
 - **Future:** Posts and comments documented as roadmap; credits updated to you (Dylan Kario) where appropriate.  
 - **README:** Updated at the end of each phase (see TASKS.md) so admins and developers always have accurate instructions.
-
