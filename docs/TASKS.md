@@ -159,7 +159,9 @@ Do this after review, when you want the new site to replace the current one at c
 
 | #   | Task                                                               | Done |
 | --- | ------------------------------------------------------------------ | ---- |
-| 7.1 | Add custom domain `canino.fm` in Netlify and set DNS at registrar. | ☐    |
+| 7.1 | Add custom domain `canino.fm` in Netlify and set DNS at registrar. | ☑    |
+
+**Done 2026-09-30.** DNS is managed at DonDominio (`ns1/ns2.dondominio.com`) — the apex `A` record was repointed from the old Raiola host (`178.211.133.77`) to Netlify's load balancer (`75.2.60.5`); `www.canino.fm` already CNAMEs to the apex so it followed automatically, then was set as the primary domain in Netlify (apex now 301s to `www`). MX/SPF/DKIM records (Google Workspace mail) were left untouched and verified working throughout — Raiola never actually controlled DNS despite appearing to via its own cPanel Zone Editor (a separate, non-authoritative zone). HTTPS certificate issued and verified. Old WordPress/Raiola hosting kept temporarily for reference access; not yet cancelled.
 
 
 ---

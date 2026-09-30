@@ -12,7 +12,7 @@ export default defineConfig({
 			dataset: env.SANITY_DATASET || 'production',
 			token: env.SANITY_API_READ_TOKEN,
 			apiVersion: '2026-04-02',
-			useCdn: true,
+			useCdn: false,
 		}),
 	],
 })

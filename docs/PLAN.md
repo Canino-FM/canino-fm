@@ -274,6 +274,8 @@ When you create the new repo **canino-fm** and open it in Cursor, a new chat won
 
 ## Order of operations
 
+**Status (2026-09-30):** Phases 0–3 and 7 are complete — content migrated to the `production` Sanity dataset, Astro site live, and `canino.fm` DNS swapped to Netlify (see TASKS.md Phase 7 for details). WordPress/Raiola hosting is retired from DNS but kept temporarily for reference access. Phases 4 (data model refactor, partially started via `show.artists[]`), 5 (webhook/EDITING.md — webhook status being verified), and 6 (accessibility) remain open.
+
 1. **Account setup:** Complete the walkthrough above (GitHub org + repo, Sanity project + tokens, Netlify connect + env). Custom domain is Phase 7 in TASKS.md when you are ready to swap the live site.
 2. **Data / CMS:** Sanity schema + migration script; you run script and import into Sanity, then **run the image pipeline** (Phase 2: resolve `_thumbnail_id` → upload assets → patch `show.image`) so the archive has real images in the content lake.
 3. **UI:** Astro 1:1 implementation (Phase 3), no a11y changes.
