@@ -130,6 +130,8 @@ const records: SearchRecord[] = [
 
 	document.querySelectorAll('.button--search').forEach((btn) => {
 		function toggleSearch() {
+			// Keep the two overlays mutually exclusive, so closing Search never reveals a stale About.
+			document.body.classList.remove('show-about')
 			document.body.classList.toggle('show-search')
 			if (document.body.classList.contains('show-search')) {
 				input?.focus()
