@@ -13,6 +13,7 @@ _Add items as bullets or checkboxes. Newest at the top or bottom—pick one conv
 - [ ] Refactor all CSS to Astro scoped CSS and update all `calc()` to use `vw` and `vh` units.
 - [ ] Consider Netlify analytics.
 - [ ] Add better formatting and linting.
+- [ ] Compress/downscale WP-migrated show images before or after Sanity upload.
 
 ## Done
 

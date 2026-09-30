@@ -29,7 +29,7 @@ import { join, dirname } from 'path'
 import { fileURLToPath } from 'url'
 import dotenv from 'dotenv'
 import { createClient } from '@sanity/client'
-import { artistRenames, newArtists, titleCorrections, manualLinks } from './corrections.js'
+import { artistRenames, newArtists, titleCorrections, manualLinks, artistDuplicates } from './corrections.js'
 
 const __dirname = dirname(fileURLToPath(import.meta.url))
 dotenv.config({ path: join(__dirname, '../../.env') })
@@ -110,6 +110,16 @@ async function applyCorrections(client, shows, artists, { write }) {
       if (write) await client.patch(artist._id).set({ name: to }).commit()
     } else if (!artists.some((a) => a.name && norm(a.name) === norm(to))) {
       log.push(`WARNING: artist rename source "${from}" not found (target "${to}" also missing)`)
+    }
+  }
+
+  for (const { keep, remove } of artistDuplicates) {
+    const dupIndex = artists.findIndex((a) => a._id === remove)
+    if (dupIndex !== -1) {
+      const dup = artists[dupIndex]
+      log.push(`Delete duplicate artist ${remove} ("${dup.name}") — merged into ${keep}`)
+      artists.splice(dupIndex, 1)
+      if (write) await client.delete(remove)
     }
   }
 
