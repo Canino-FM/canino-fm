@@ -15,7 +15,7 @@ const showsByArtist = groupShowsByArtist(data.archiveShows)
 const linkedArtists = data.artists.filter((artist) => showsByArtist.has(artist.id))
 ---
 
-<BaseLayout skipIntro={import.meta.env.DEV}>
+<BaseLayout skipIntro={import.meta.env.DEV} introOncePerSession>
 	<Header />
 	<main class="main">
 		<div class="main__container">
