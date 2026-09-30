@@ -49,21 +49,6 @@ const linkedArtists = data.artists.filter((artist) => showsByArtist.has(artist.i
 				}, 2500)
 			}
 
-			document.querySelectorAll('.button--about').forEach(function (btn) {
-				function toggleAbout() {
-					// About sits below Search in the stack, so it would open invisibly behind it.
-					body.classList.remove('show-search')
-					body.classList.toggle('show-about')
-				}
-				btn.addEventListener('click', toggleAbout)
-				btn.addEventListener('keydown', function (e) {
-					if (e.key === 'Enter' || e.key === ' ') {
-						e.preventDefault()
-						toggleAbout()
-					}
-				})
-			})
-
 			document.querySelectorAll('#shows .show[data-soundcloud]').forEach(function (el) {
 				el.addEventListener('click', function () {
 					const raw = el.getAttribute('data-soundcloud') || ''
@@ -83,16 +68,18 @@ const linkedArtists = data.artists.filter((artist) => showsByArtist.has(artist.i
 				})
 			})
 
-			document.querySelectorAll('.menu .item a[href^="#"]').forEach(function (link) {
+			document.querySelectorAll('.menu .item a[href*="#"]').forEach(function (link) {
 				link.addEventListener('click', function (e) {
+					const href = link.getAttribute('href') || ''
+					const hash = href.slice(href.indexOf('#'))
+					if (hash.length < 2) return
+					// Section isn't on this page: let the browser follow the link home.
+					const target = document.querySelector(hash)
+					if (!target) return
 					// Both overlays cover the viewport; leaving one open hides the section we scroll to.
 					body.classList.remove('show-about')
 					body.classList.remove('show-search')
 					e.preventDefault()
-					const href = link.getAttribute('href')
-					if (!href || href.length < 2) return
-					const target = document.querySelector(href)
-					if (!target) return
 					const top = target.getBoundingClientRect().top + window.scrollY
 					window.scrollTo({ top: top, behavior: 'smooth' })
 				})

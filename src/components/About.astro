@@ -31,6 +31,28 @@ const contactEmail = settings.contact?.trim() ?? ''
 	</div>
 </div>
 
+<script>
+	// Lives here rather than on the homepage so the panel works wherever About is rendered.
+	document.querySelectorAll('.button--about').forEach((btn) => {
+		function toggleAbout() {
+			// About sits below Search in the stack, so it would otherwise open invisibly behind it.
+			document.body.classList.remove('show-search')
+			document.body.classList.toggle('show-about')
+		}
+		btn.addEventListener('click', toggleAbout)
+		btn.addEventListener('keydown', (e) => {
+			if (e instanceof KeyboardEvent && (e.key === 'Enter' || e.key === ' ')) {
+				e.preventDefault()
+				toggleAbout()
+			}
+		})
+	})
+
+	document.addEventListener('keydown', (e) => {
+		if (e.key === 'Escape') document.body.classList.remove('show-about')
+	})
+</script>
+
 <style is:global>
 	.about .thanks .item {
 		white-space: nowrap;

@@ -5,7 +5,14 @@ import Footer from '@/components/Footer.astro'
 import Player from '@/components/Player.astro'
 import ShowCard from '@/components/ShowCard.astro'
 import Search from '@/components/Search.astro'
-import { fetchHomePageData, groupShowsByArtist, type ArchiveShow, type SiteArtist } from '@/lib/sanity'
+import About from '@/components/About.astro'
+import {
+	fetchHomePageData,
+	groupShowsByArtist,
+	type ArchiveShow,
+	type SiteArtist,
+	type SettingsDoc,
+} from '@/lib/sanity'
 
 export async function getStaticPaths() {
 	const data = await fetchHomePageData()
@@ -19,6 +26,7 @@ export async function getStaticPaths() {
 			shows: showsByArtist.get(artist.id)!,
 			allShows: data.archiveShows,
 			allArtists: linkedArtists,
+			settings: data.settings,
 		},
 	}))
 }
@@ -28,9 +36,10 @@ interface Props {
 	shows: ArchiveShow[]
 	allShows: ArchiveShow[]
 	allArtists: SiteArtist[]
+	settings: SettingsDoc
 }
 
-const { artistName, shows, allShows, allArtists } = Astro.props
+const { artistName, shows, allShows, allArtists, settings } = Astro.props
 ---
 
 <BaseLayout title={`${artistName} — Canino FM`} skipIntro>
@@ -48,6 +57,7 @@ const { artistName, shows, allShows, allArtists } = Astro.props
 			</section>
 		</div>
 	</main>
+	<About settings={settings} />
 	<Search shows={allShows} artists={allArtists} />
 	<Footer />
 	<Player />
