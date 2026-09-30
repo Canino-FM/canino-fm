@@ -9,6 +9,15 @@ interface Props {
 }
 
 const { program, heroVideoHtml, heroIframeSrc } = Astro.props
+
+/** Canino FM on YouTube. Also the default in netlify/functions/live-status.mjs. */
+const YOUTUBE_CHANNEL_ID = 'UCaR-E0AKLsDDS1Xgl7_DdZQ'
+
+/** Resolves to whatever is live on the channel at the moment it loads — no video id needed. */
+const liveEmbedSrc = `https://www.youtube-nocookie.com/embed/live_stream?channel=${YOUTUBE_CHANNEL_ID}&autoplay=1`
+
+/** An embed set in Sanity wins, so an editor can always pin something specific in the hero. */
+const hasManualEmbed = Boolean(heroVideoHtml || heroIframeSrc)
 ---
 
 <section id="program" class="hero">
@@ -26,11 +35,65 @@ const { program, heroVideoHtml, heroIframeSrc } = Astro.props
 					referrerpolicy="strict-origin-when-cross-origin"
 					allowfullscreen
 				/>
-			) : null
+			) : (
+				/* Built offline: the page is static, so live state is resolved in the browser. */
+				<div class="video__live" data-live-src={liveEmbedSrc}>
+					<p class="video__offline">Offline</p>
+				</div>
+			)
 		}
 	</div>
 	<Program program={program} />
 </section>
+
+{
+	hasManualEmbed ? null : (
+		<script>
+			const mount = document.querySelector('.video__live')
+			const src = mount?.getAttribute('data-live-src')
+
+			if (mount && src) {
+				let showingLive: boolean | null = null
+
+				function showLive() {
+					const iframe = document.createElement('iframe')
+					iframe.src = src!
+					iframe.title = 'Canino FM live'
+					iframe.allow =
+						'accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture; web-share'
+					iframe.referrerPolicy = 'strict-origin-when-cross-origin'
+					iframe.allowFullscreen = true
+					mount!.replaceChildren(iframe)
+				}
+
+				function showOffline() {
+					const p = document.createElement('p')
+					p.className = 'video__offline'
+					p.textContent = 'Offline'
+					mount!.replaceChildren(p)
+				}
+
+				async function refresh() {
+					try {
+						// Cached 30s in the browser and 60s at the edge, so this is cheap to poll.
+						const res = await fetch('/api/live-status')
+						if (!res.ok) return
+						const { live } = await res.json()
+						if (live === showingLive) return
+						showingLive = live
+						if (live) showLive()
+						else showOffline()
+					} catch {
+						// Offline browser or a failed function call: leave whatever is on screen.
+					}
+				}
+
+				refresh()
+				setInterval(refresh, 60_000)
+			}
+		</script>
+	)
+}
 
 <style is:global>
 	.hero {
@@ -78,6 +141,30 @@ const { program, heroVideoHtml, heroIframeSrc } = Astro.props
 		width: 100%;
 		height: calc(540 / 1920 * 100vw);
 		border: 0;
+	}
+
+	/* Same box as the iframe, so swapping live <-> offline never shifts the layout. */
+	.hero .video__live {
+		width: 100%;
+		height: calc(540 / 1920 * 100vw);
+	}
+
+	.hero .video__offline {
+		display: flex;
+		align-items: center;
+		justify-content: center;
+		width: 100%;
+		height: 100%;
+		margin: 0;
+		background: #000;
+		color: #fff;
+		text-transform: uppercase;
+	}
+
+	@media (max-width: 767px) {
+		.hero .video__live {
+			height: calc(213 / 375 * 100vw);
+		}
 	}
 
 	@media (max-width: 767px) {
