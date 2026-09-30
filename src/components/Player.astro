@@ -1,9 +1,324 @@
-<div id="player" class="player"></div>
+<div id="player" class="player" data-state="empty">
+	{/* The real SoundCloud widget: it does the streaming, but is never shown. */}
+	<iframe
+		id="player-widget"
+		class="player__widget"
+		title="SoundCloud audio stream"
+		allow="autoplay"
+		tabindex="-1"
+		aria-hidden="true"></iframe>
+
+	<div class="player__bar">
+		<button class="player__toggle" type="button" aria-label="Play">
+			<svg class="player__icon player__icon--play" viewBox="0 0 24 24" aria-hidden="true">
+				<path d="M6 3.5v17l15-8.5z" fill="currentColor"></path>
+			</svg>
+			<svg class="player__icon player__icon--pause" viewBox="0 0 24 24" aria-hidden="true">
+				<path d="M5.5 3.5h5v17h-5zM13.5 3.5h5v17h-5z" fill="currentColor"></path>
+			</svg>
+		</button>
+
+		<div class="player__meta">
+			<p class="player__title"></p>
+			<p class="player__artist"></p>
+		</div>
+
+		<div
+			class="player__seek"
+			role="slider"
+			tabindex="0"
+			aria-label="Seek"
+			aria-valuemin="0"
+			aria-valuemax="100"
+			aria-valuenow="0"
+		>
+			<div class="player__progress"></div>
+		</div>
+
+		<p class="player__time">
+			<span class="player__elapsed">0:00</span>/<span class="player__duration">0:00</span>
+		</p>
+
+		{/* SoundCloud's terms require crediting the uploader and linking back to the track. */}
+		<a class="player__source" target="_blank" rel="noopener noreferrer">SoundCloud</a>
+	</div>
+</div>
+
+<script>
+	interface PlayDetail {
+		src: string
+		title?: string
+	}
+
+	const root = document.getElementById('player')
+	const iframe = document.getElementById('player-widget') as HTMLIFrameElement | null
+
+	if (root && iframe) {
+		const toggle = root.querySelector('.player__toggle') as HTMLButtonElement
+		const titleEl = root.querySelector('.player__title') as HTMLElement
+		const artistEl = root.querySelector('.player__artist') as HTMLElement
+		const seek = root.querySelector('.player__seek') as HTMLElement
+		const progress = root.querySelector('.player__progress') as HTMLElement
+		const elapsedEl = root.querySelector('.player__elapsed') as HTMLElement
+		const durationEl = root.querySelector('.player__duration') as HTMLElement
+		const sourceEl = root.querySelector('.player__source') as HTMLAnchorElement
+
+		const sc = () => (window as any).SC
+		let widget: any = null
+		let durationMs = 0
+		let apiLoad: Promise<void> | null = null
+
+		/** Fetched on first play rather than on every page load. */
+		function loadWidgetApi(): Promise<void> {
+			if (apiLoad) return apiLoad
+			apiLoad = new Promise((resolve, reject) => {
+				if (sc()?.Widget) return resolve()
+				const script = document.createElement('script')
+				script.src = 'https://w.soundcloud.com/player/api.js'
+				script.onload = () => resolve()
+				script.onerror = () => reject(new Error('SoundCloud widget API did not load'))
+				document.head.appendChild(script)
+			})
+			return apiLoad
+		}
+
+		function formatTime(ms: number): string {
+			if (!Number.isFinite(ms) || ms <= 0) return '0:00'
+			const total = Math.floor(ms / 1000)
+			return `${Math.floor(total / 60)}:${String(total % 60).padStart(2, '0')}`
+		}
+
+		function setPlaying(playing: boolean) {
+			root!.dataset.playing = playing ? 'true' : 'false'
+			toggle.setAttribute('aria-label', playing ? 'Pause' : 'Play')
+		}
+
+		function setProgress(ratio: number) {
+			const pct = Math.max(0, Math.min(1, ratio)) * 100
+			progress.style.width = `${pct}%`
+			seek.setAttribute('aria-valuenow', String(Math.round(pct)))
+		}
+
+		/** The widget URL carries SoundCloud's own orange; the site is monochrome. */
+		function widgetUrl(src: string): string {
+			const url = new URL(src, location.href)
+			url.searchParams.set('auto_play', 'true')
+			url.searchParams.set('hide_related', 'true')
+			url.searchParams.set('show_comments', 'false')
+			url.searchParams.set('visual', 'false')
+			return url.toString()
+		}
+
+		async function play(detail: PlayDetail) {
+			if (!detail?.src) return
+
+			// Show the requested title immediately; SoundCloud's own metadata replaces it on READY.
+			titleEl.textContent = detail.title ?? ''
+			artistEl.textContent = ''
+			setProgress(0)
+			elapsedEl.textContent = '0:00'
+			durationEl.textContent = '0:00'
+			root!.dataset.state = 'loading'
+
+			try {
+				await loadWidgetApi()
+			} catch {
+				// Without the API there is no custom player; fall back to SoundCloud's own UI.
+				root!.dataset.state = 'fallback'
+				iframe!.src = detail.src
+				return
+			}
+
+			iframe!.src = widgetUrl(detail.src)
+			widget = sc().Widget(iframe)
+
+			widget.bind(sc().Widget.Events.READY, () => {
+				root!.dataset.state = 'ready'
+
+				widget.getCurrentSound((sound: any) => {
+					if (!sound) return
+					if (sound.title) titleEl.textContent = sound.title
+					artistEl.textContent = sound.user?.username ?? ''
+					if (sound.permalink_url) sourceEl.href = sound.permalink_url
+				})
+
+				widget.getDuration((ms: number) => {
+					durationMs = ms
+					durationEl.textContent = formatTime(ms)
+				})
+
+				widget.bind(sc().Widget.Events.PLAY, () => setPlaying(true))
+				widget.bind(sc().Widget.Events.PAUSE, () => setPlaying(false))
+				widget.bind(sc().Widget.Events.FINISH, () => {
+					setPlaying(false)
+					setProgress(0)
+				})
+				widget.bind(sc().Widget.Events.PLAY_PROGRESS, (e: { currentPosition: number }) => {
+					elapsedEl.textContent = formatTime(e.currentPosition)
+					if (durationMs > 0) setProgress(e.currentPosition / durationMs)
+				})
+
+				widget.play()
+			})
+		}
+
+		toggle.addEventListener('click', () => {
+			if (!widget) return
+			widget.isPaused((paused: boolean) => (paused ? widget.play() : widget.pause()))
+		})
+
+		function seekToClientX(clientX: number) {
+			if (!widget || durationMs <= 0) return
+			const rect = seek.getBoundingClientRect()
+			const ratio = Math.max(0, Math.min(1, (clientX - rect.left) / rect.width))
+			widget.seekTo(ratio * durationMs)
+			setProgress(ratio)
+		}
+
+		seek.addEventListener('click', (e) => seekToClientX(e.clientX))
+		seek.addEventListener('keydown', (e) => {
+			if (!widget || durationMs <= 0) return
+			const step = durationMs * 0.05
+			if (e.key === 'ArrowRight' || e.key === 'ArrowLeft') {
+				e.preventDefault()
+				widget.getPosition((pos: number) => {
+					const next = e.key === 'ArrowRight' ? pos + step : pos - step
+					const clamped = Math.max(0, Math.min(durationMs, next))
+					widget.seekTo(clamped)
+					setProgress(clamped / durationMs)
+				})
+			}
+		})
+
+		document.addEventListener('canino:play', (e) => play((e as CustomEvent<PlayDetail>).detail))
+	}
+</script>
 
 <style is:global>
-	.player iframe {
-		display: block;
-		width: 100%;
+	/* Present for streaming only — the visible controls are the markup above. */
+	.player__widget {
+		position: absolute;
+		width: 1px;
+		height: 1px;
 		border: 0;
+		opacity: 0;
+		pointer-events: none;
+	}
+
+	.player__bar {
+		display: none;
+		align-items: center;
+		gap: calc(14 / 1920 * 100vw);
+		height: 100px;
+		padding: 0 calc(10 / 1920 * 100vw);
+		background: #000;
+		color: #fff;
+		text-transform: uppercase;
+	}
+
+	.player[data-state='ready'] .player__bar,
+	.player[data-state='loading'] .player__bar {
+		display: flex;
+	}
+
+	/* If the widget API is unreachable, show SoundCloud's own player instead of nothing. */
+	.player[data-state='fallback'] .player__widget {
+		position: static;
+		width: 100%;
+		height: 100px;
+		opacity: 1;
+		pointer-events: auto;
+	}
+
+	.player__toggle {
+		flex: none;
+		display: flex;
+		align-items: center;
+		justify-content: center;
+		width: calc(44 / 1920 * 100vw);
+		height: calc(44 / 1920 * 100vw);
+		padding: 0;
+		border: 1px solid #fff;
+		background: transparent;
+		color: #fff;
+		cursor: pointer;
+	}
+
+	.player__icon {
+		width: 45%;
+		height: 45%;
+	}
+
+	.player__icon--pause,
+	.player[data-playing='true'] .player__icon--play {
+		display: none;
+	}
+
+	.player[data-playing='true'] .player__icon--pause {
+		display: block;
+	}
+
+	.player__meta {
+		flex: none;
+		width: calc(420 / 1920 * 100vw);
+		min-width: 0;
+	}
+
+	.player__title,
+	.player__artist {
+		margin: 0;
+		overflow: hidden;
+		white-space: nowrap;
+		text-overflow: ellipsis;
+	}
+
+	.player__artist {
+		opacity: 0.6;
+	}
+
+	.player__seek {
+		flex: 1 1 auto;
+		height: calc(6 / 1920 * 100vw);
+		min-height: 4px;
+		background: rgba(255, 255, 255, 0.25);
+		cursor: pointer;
+	}
+
+	.player__progress {
+		width: 0;
+		height: 100%;
+		background: #fff;
+	}
+
+	.player__time,
+	.player__source {
+		flex: none;
+		margin: 0;
+		white-space: nowrap;
+	}
+
+	.player__source {
+		text-decoration: underline;
+	}
+
+	@media (max-width: 767px) {
+		.player__bar {
+			gap: calc(8 / 375 * 100vw);
+			padding: 0 calc(5 / 375 * 100vw);
+		}
+
+		.player__toggle {
+			width: calc(32 / 375 * 100vw);
+			height: calc(32 / 375 * 100vw);
+		}
+
+		.player__meta {
+			width: calc(120 / 375 * 100vw);
+		}
+
+		.player__time,
+		.player__artist {
+			display: none;
+		}
 	}
 </style>

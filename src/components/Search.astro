@@ -73,20 +73,11 @@ const records: SearchRecord[] = [
 	const input = document.getElementById('search-input') as HTMLInputElement | null
 	const results = document.getElementById('search-results')
 
-	function playShow(soundcloudSrc: string) {
-		const src = soundcloudSrc.replace(/%23ff5500/gi, '%23000000')
-		if (!src) return
-		const player = document.getElementById('player')
-		if (!player) return
-		player.replaceChildren()
-		const iframe = document.createElement('iframe')
-		iframe.width = '100%'
-		iframe.height = '100'
-		iframe.setAttribute('scrolling', 'no')
-		iframe.setAttribute('frameborder', 'no')
-		iframe.setAttribute('allow', 'autoplay')
-		iframe.src = src
-		player.appendChild(iframe)
+	function playShow(soundcloudSrc: string, title: string) {
+		if (!soundcloudSrc) return
+		document.dispatchEvent(
+			new CustomEvent('canino:play', { detail: { src: soundcloudSrc, title } }),
+		)
 	}
 
 	function closeSearch() {
@@ -109,7 +100,7 @@ const records: SearchRecord[] = [
 			li.appendChild(subtitle)
 			li.addEventListener('click', () => {
 				if (record.type === 'show' && record.soundcloudSrc) {
-					playShow(record.soundcloudSrc)
+					playShow(record.soundcloudSrc, record.title)
 					closeSearch()
 				} else if (record.type === 'artist' && record.href) {
 					window.location.href = record.href
