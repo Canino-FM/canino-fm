@@ -10,14 +10,20 @@ interface Props {
 
 const { program, heroVideoHtml, heroIframeSrc } = Astro.props
 
-/** Canino FM on YouTube. Also the default in netlify/functions/live-status.mjs. */
-const YOUTUBE_CHANNEL_ID = 'UCaR-E0AKLsDDS1Xgl7_DdZQ'
+/**
+ * Read from the same env var as netlify/functions/live-status.mjs, so the channel that is
+ * checked and the channel that is embedded cannot diverge. Note the asymmetry: this is
+ * resolved at build time and the function resolves it per request, so changing the var
+ * needs a redeploy — otherwise the function would check one channel and the hero embed
+ * another, which renders a dead player with no error anywhere.
+ */
+const YOUTUBE_CHANNEL_ID = process.env.YOUTUBE_CHANNEL_ID || 'UCaR-E0AKLsDDS1Xgl7_DdZQ'
 
 /**
  * Resolves to whatever is live on the channel at the moment it loads — no video id needed.
- * Muted because browsers block unmuted autoplay in cross-origin iframes, so an unmuted
- * stream would simply load paused. Matches the `autoplay=1&mute=1` the hero embed already
- * used; the viewer unmutes in the player.
+ *
+ * Muted because iOS, and desktop browsers without prior engagement, only allow autoplay
+ * when muted; an unmuted embed would simply load paused. The viewer unmutes in the player.
  *
  * playsinline is required for iOS: YouTube defaults it to 0, which takes playback
  * fullscreen there, so the stream would hijack the screen instead of sitting in the hero.
@@ -58,70 +64,122 @@ const liveEmbedSrc = `https://www.youtube-nocookie.com/embed/live_stream?channel
 	const src = mount?.getAttribute('data-live-src')
 
 	if (mount && src) {
-		let showingLive: boolean | null = null
+		const liveMount = mount
+		const liveSrc = src
+
+		const POLL_MS = 60_000
+		const REQUEST_TIMEOUT_MS = 10_000
 
 		/**
-		 * Go live on the first positive reading, but require two consecutive negatives
-		 * before tearing a player down: a single bad minute must not interrupt a broadcast.
+		 * Tearing a player down destroys its browsing context: the viewer loses whatever they
+		 * did inside it, including unmuting — and the remount is muted again. For a radio
+		 * station that is silence which looks like it is working, so the threshold is
+		 * deliberately generous. The cost is a dead player for up to five minutes after a
+		 * broadcast genuinely ends; the alternative is cutting a listener off mid-show.
 		 */
-		const OFFLINE_READINGS_BEFORE_TEARDOWN = 2
-		let consecutiveOffline = 0
+		const OFFLINE_READINGS_BEFORE_TEARDOWN = 5
+
+		/**
+		 * An undetermined reading must not tear a stream down, but it must not pin a stale one
+		 * on screen forever either. If the check stays unreachable this long while a player is
+		 * mounted, fall back rather than leave a dead embed up indefinitely.
+		 */
+		const UNKNOWN_READINGS_BEFORE_FALLBACK = 10
+
+		// Mirrors what is in the DOM. Re-running showLive() would replace the iframe and
+		// restart playback, so only transitions touch the DOM — never re-assert a state.
+		// Starts false because the server already rendered the offline card.
+		let showingLive = false
+		let offlineReadings = 0
+		let unknownReadings = 0
+		let inFlight = false
 
 		function showLive() {
 			const iframe = document.createElement('iframe')
-			iframe.src = src!
+			iframe.src = liveSrc
 			iframe.title = 'Canino FM live'
 			iframe.allow =
 				'accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture; web-share'
 			iframe.referrerPolicy = 'strict-origin-when-cross-origin'
 			iframe.allowFullscreen = true
-			mount!.replaceChildren(iframe)
+			liveMount.replaceChildren(iframe)
+			showingLive = true
 		}
 
 		function showOffline() {
 			const p = document.createElement('p')
 			p.className = 'video__offline'
 			p.textContent = 'Offline'
-			mount!.replaceChildren(p)
+			liveMount.replaceChildren(p)
+			showingLive = false
+		}
+
+		/** Returns true, false, or null for "could not tell". Never throws. */
+		async function readStatus(): Promise<boolean | null> {
+			try {
+				const res = await fetch('/api/live-status', {
+					signal: AbortSignal.timeout(REQUEST_TIMEOUT_MS),
+				})
+				if (!res.ok) {
+					// Without this, a function that failed to deploy is completely silent: the
+					// page polls a 404 forever and shows Offline, with nothing logged anywhere.
+					console.warn('[live-status] request failed:', res.status, res.statusText)
+					return null
+				}
+				const payload = await res.json()
+				if (typeof payload?.live === 'boolean') return payload.live
+				console.warn('[live-status] indeterminate:', payload?.reason ?? payload)
+				return null
+			} catch (error) {
+				console.warn('[live-status] unreachable:', error)
+				return null
+			}
 		}
 
 		async function refresh() {
-			let live: boolean | null = null
-
+			// A stalled request landing late could otherwise apply a stale reading over a
+			// newer one, defeating the teardown threshold with a single real negative.
+			if (inFlight) return
+			inFlight = true
+			let live: boolean | null
 			try {
-				// Cached 30s in the browser and 60s at the edge, so this is cheap to poll.
-				const res = await fetch('/api/live-status')
-				if (res.ok) {
-					const payload = await res.json()
-					// `null` means the check itself failed, which is not the same as being off air.
-					live = typeof payload?.live === 'boolean' ? payload.live : null
-				}
-			} catch {
-				// Browser offline, or the function is unreachable: treat as "do not know".
+				live = await readStatus()
+			} finally {
+				inFlight = false
 			}
 
-			if (live === null) return
-
-			if (live) {
-				consecutiveOffline = 0
-				if (showingLive !== true) {
-					showingLive = true
-					showLive()
+			if (live === null) {
+				unknownReadings += 1
+				if (showingLive && unknownReadings >= UNKNOWN_READINGS_BEFORE_FALLBACK) {
+					unknownReadings = 0
+					showOffline()
 				}
 				return
 			}
 
-			consecutiveOffline += 1
-			// Nothing is playing yet, so there is no teardown to delay.
-			const needed = showingLive === true ? OFFLINE_READINGS_BEFORE_TEARDOWN : 1
-			if (consecutiveOffline >= needed && showingLive !== false) {
-				showingLive = false
+			unknownReadings = 0
+
+			if (live) {
+				offlineReadings = 0
+				if (!showingLive) showLive()
+				return
+			}
+
+			offlineReadings += 1
+			if (showingLive && offlineReadings >= OFFLINE_READINGS_BEFORE_TEARDOWN) {
+				offlineReadings = 0
 				showOffline()
 			}
 		}
 
 		refresh()
-		setInterval(refresh, 60_000)
+		setInterval(refresh, POLL_MS)
+
+		// Background tabs throttle timers, so a returning visitor can be a full interval
+		// stale — worse on mobile, where the timer may be suspended entirely.
+		document.addEventListener('visibilitychange', () => {
+			if (!document.hidden) refresh()
+		})
 	}
 </script>
 
