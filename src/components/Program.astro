@@ -57,9 +57,10 @@ const events = program.events ?? []
 		text-transform: uppercase;
 	}
 
+	/* Date reads as a heading over its lineup, rather than sitting in a column beside it. */
 	.program .event {
-		display: flex;
-		margin-bottom: calc(22 / 1920 * 100vw);
+		display: block;
+		margin-bottom: calc(44 / 1920 * 100vw);
 	}
 
 	@media (max-width: 767px) {
@@ -70,16 +71,22 @@ const events = program.events ?? []
 	}
 
 	.program .date {
-		width: calc(150 / 1920 * 100vw);
-		margin-bottom: 0;
+		width: 100%;
+		margin-bottom: calc(14 / 1920 * 100vw);
 		font: inherit;
+		/* One step up the site's existing scale (16 → 24 → 42), not a new size. */
+		font-size: calc(24 / 1920 * 100vw);
+		line-height: 0.91;
+		letter-spacing: -0.03em;
 		text-transform: uppercase;
 	}
 
 	@media (max-width: 767px) {
 		.program .date {
 			width: 100%;
-			margin-bottom: calc(24 / 375 * 100vw);
+			margin-bottom: calc(14 / 375 * 100vw);
+			/* Same 1.5x step over the body size as the desktop rule. */
+			font-size: calc(18 / 375 * 100vw);
 		}
 	}
 
@@ -110,7 +117,9 @@ const events = program.events ?? []
 
 	.program .shows .show .title {
 		display: block;
-		width: calc(600 / 1920 * 100vw);
+		/* Takes the width the date column used to occupy, instead of a fixed 600. */
+		flex: 1 1 auto;
+		min-width: 0;
 		margin: 0;
 		font: inherit;
 		text-transform: uppercase;
