@@ -113,6 +113,9 @@
 
 	@media (max-width: 767px) {
 		.header .logo-wrapper {
+			/* Was inheriting the desktop `top`, which divides by 1920 and collapses to ~2px
+			   here, pinning the wordmark to the top instead of centring it on the symbol. */
+			top: calc(10 / 375 * 100vw);
 			left: calc(50 / 375 * 100vw);
 			height: calc(40 / 375 * 100vw);
 		}
