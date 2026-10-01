@@ -67,17 +67,22 @@
 		let widget: any = null
 		let durationMs = 0
 		let apiLoad: Promise<void> | null = null
+		let transportBound = false
 
 		/** Fetched on first play rather than on every page load. */
 		function loadWidgetApi(): Promise<void> {
 			if (apiLoad) return apiLoad
-			apiLoad = new Promise((resolve, reject) => {
+			apiLoad = new Promise<void>((resolve, reject) => {
 				if (sc()?.Widget) return resolve()
 				const script = document.createElement('script')
 				script.src = 'https://w.soundcloud.com/player/api.js'
 				script.onload = () => resolve()
 				script.onerror = () => reject(new Error('SoundCloud widget API did not load'))
 				document.head.appendChild(script)
+			}).catch((error) => {
+				// Forget the failure, or one flaky load would pin the page in fallback for good.
+				apiLoad = null
+				throw error
 			})
 			return apiLoad
 		}
@@ -109,57 +114,105 @@
 			return url.toString()
 		}
 
-		async function play(detail: PlayDetail) {
-			if (!detail?.src) return
+		/** `widget.load()` wants the track itself, which the widget URL carries as ?url=. */
+		function trackUrl(src: string): string {
+			try {
+				return new URL(src, location.href).searchParams.get('url') || src
+			} catch {
+				return src
+			}
+		}
 
-			// Show the requested title immediately; SoundCloud's own metadata replaces it on READY.
-			titleEl.textContent = detail.title ?? ''
+		/** Clears per-track state so nothing from the previous show leaks into this one. */
+		function resetForTrack(title: string) {
+			titleEl.textContent = title
 			artistEl.textContent = ''
 			setProgress(0)
 			elapsedEl.textContent = '0:00'
 			durationEl.textContent = '0:00'
+			// Until the real duration arrives, a seek would be computed against the old track.
+			durationMs = 0
+			// Likewise the credit link, which must never point at the previous track.
+			sourceEl.removeAttribute('href')
 			root!.dataset.state = 'loading'
+		}
+
+		/** Runs per track; the transport handlers below are bound once for the widget's life. */
+		function readTrackMetadata() {
+			root!.dataset.state = 'ready'
+
+			widget.getCurrentSound((sound: any) => {
+				if (!sound) return
+				if (sound.title) titleEl.textContent = sound.title
+				artistEl.textContent = sound.user?.username ?? ''
+				if (sound.permalink_url) sourceEl.href = sound.permalink_url
+			})
+
+			widget.getDuration((ms: number) => {
+				durationMs = ms
+				durationEl.textContent = formatTime(ms)
+			})
+		}
+
+		/**
+		 * One widget for the page, created on first play. Binding these per track would stack
+		 * a fresh set of callbacks on every show, so after a few plays each progress tick
+		 * would run them all.
+		 */
+		function createWidget(src: string): Promise<void> {
+			return new Promise((resolve) => {
+				iframe!.src = widgetUrl(src)
+				widget = sc().Widget(iframe)
+				widget.bind(sc().Widget.Events.READY, () => {
+					if (transportBound) return
+					transportBound = true
+					widget.bind(sc().Widget.Events.PLAY, () => setPlaying(true))
+					widget.bind(sc().Widget.Events.PAUSE, () => setPlaying(false))
+					widget.bind(sc().Widget.Events.FINISH, () => {
+						setPlaying(false)
+						setProgress(0)
+					})
+					widget.bind(sc().Widget.Events.PLAY_PROGRESS, (e: { currentPosition: number }) => {
+						elapsedEl.textContent = formatTime(e.currentPosition)
+						if (durationMs > 0) setProgress(e.currentPosition / durationMs)
+					})
+					resolve()
+				})
+			})
+		}
+
+		function enterFallback(src: string) {
+			root!.dataset.state = 'fallback'
+			// The widget becomes the only player on screen, so it has to be reachable.
+			iframe!.removeAttribute('aria-hidden')
+			iframe!.removeAttribute('tabindex')
+			// The raw Sanity embed is auto_play=false, so the click would otherwise do nothing.
+			iframe!.src = widgetUrl(src)
+		}
+
+		async function play(detail: PlayDetail) {
+			if (!detail?.src) return
+
+			// Show the requested title immediately; SoundCloud's own metadata replaces it below.
+			resetForTrack(detail.title ?? '')
 
 			try {
 				await loadWidgetApi()
 			} catch {
-				// Without the API there is no custom player; fall back to SoundCloud's own UI.
-				root!.dataset.state = 'fallback'
-				iframe!.src = detail.src
+				enterFallback(detail.src)
 				return
 			}
 
-			iframe!.src = widgetUrl(detail.src)
-			widget = sc().Widget(iframe)
+			if (!widget) {
+				await createWidget(detail.src)
+			} else {
+				await new Promise<void>((resolve) =>
+					widget.load(trackUrl(detail.src), { auto_play: true, callback: resolve }),
+				)
+			}
 
-			widget.bind(sc().Widget.Events.READY, () => {
-				root!.dataset.state = 'ready'
-
-				widget.getCurrentSound((sound: any) => {
-					if (!sound) return
-					if (sound.title) titleEl.textContent = sound.title
-					artistEl.textContent = sound.user?.username ?? ''
-					if (sound.permalink_url) sourceEl.href = sound.permalink_url
-				})
-
-				widget.getDuration((ms: number) => {
-					durationMs = ms
-					durationEl.textContent = formatTime(ms)
-				})
-
-				widget.bind(sc().Widget.Events.PLAY, () => setPlaying(true))
-				widget.bind(sc().Widget.Events.PAUSE, () => setPlaying(false))
-				widget.bind(sc().Widget.Events.FINISH, () => {
-					setPlaying(false)
-					setProgress(0)
-				})
-				widget.bind(sc().Widget.Events.PLAY_PROGRESS, (e: { currentPosition: number }) => {
-					elapsedEl.textContent = formatTime(e.currentPosition)
-					if (durationMs > 0) setProgress(e.currentPosition / durationMs)
-				})
-
-				widget.play()
-			})
+			readTrackMetadata()
+			widget.play()
 		}
 
 		toggle.addEventListener('click', () => {
