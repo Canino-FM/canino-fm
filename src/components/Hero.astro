@@ -18,8 +18,11 @@ const YOUTUBE_CHANNEL_ID = 'UCaR-E0AKLsDDS1Xgl7_DdZQ'
  * Muted because browsers block unmuted autoplay in cross-origin iframes, so an unmuted
  * stream would simply load paused. Matches the `autoplay=1&mute=1` the hero embed already
  * used; the viewer unmutes in the player.
+ *
+ * playsinline is required for iOS: YouTube defaults it to 0, which takes playback
+ * fullscreen there, so the stream would hijack the screen instead of sitting in the hero.
  */
-const liveEmbedSrc = `https://www.youtube-nocookie.com/embed/live_stream?channel=${YOUTUBE_CHANNEL_ID}&autoplay=1&mute=1`
+const liveEmbedSrc = `https://www.youtube-nocookie.com/embed/live_stream?channel=${YOUTUBE_CHANNEL_ID}&autoplay=1&mute=1&playsinline=1`
 ---
 
 <section id="program" class="hero">
