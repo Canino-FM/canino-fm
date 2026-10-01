@@ -117,7 +117,9 @@ const events = program.events ?? []
 
 	.program .shows .show .title {
 		display: block;
-		/* Takes the width the date column used to occupy, instead of a fixed 600. */
+		/* Fills the row now the date no longer sits beside it. min-width:0 defeats the flex
+		   minimum content size, so overflow-wrap below can wrap a long title instead of the
+		   item refusing to shrink — it is load-bearing, not redundant. */
 		flex: 1 1 auto;
 		min-width: 0;
 		margin: 0;

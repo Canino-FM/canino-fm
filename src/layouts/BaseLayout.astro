@@ -61,6 +61,8 @@ const introOnceScript = `(function () {
 							height: calc(59 / 375 * 100vw);
 						}
 						body.skip-intro .header .logo-wrapper {
+							/* Mirrors Header.astro's mobile rule, which is the source of truth. */
+							top: calc(10 / 375 * 100vw);
 							left: calc(50 / 375 * 100vw);
 							height: calc(40 / 375 * 100vw);
 							width: calc(320 / 375 * 100vw);
