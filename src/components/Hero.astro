@@ -13,11 +13,13 @@ const { program, heroVideoHtml, heroIframeSrc } = Astro.props
 /** Canino FM on YouTube. Also the default in netlify/functions/live-status.mjs. */
 const YOUTUBE_CHANNEL_ID = 'UCaR-E0AKLsDDS1Xgl7_DdZQ'
 
-/** Resolves to whatever is live on the channel at the moment it loads — no video id needed. */
-const liveEmbedSrc = `https://www.youtube-nocookie.com/embed/live_stream?channel=${YOUTUBE_CHANNEL_ID}&autoplay=1`
-
-/** An embed set in Sanity wins, so an editor can always pin something specific in the hero. */
-const hasManualEmbed = Boolean(heroVideoHtml || heroIframeSrc)
+/**
+ * Resolves to whatever is live on the channel at the moment it loads — no video id needed.
+ * Muted because browsers block unmuted autoplay in cross-origin iframes, so an unmuted
+ * stream would simply load paused. Matches the `autoplay=1&mute=1` the hero embed already
+ * used; the viewer unmutes in the player.
+ */
+const liveEmbedSrc = `https://www.youtube-nocookie.com/embed/live_stream?channel=${YOUTUBE_CHANNEL_ID}&autoplay=1&mute=1`
 ---
 
 <section id="program" class="hero">
@@ -46,54 +48,79 @@ const hasManualEmbed = Boolean(heroVideoHtml || heroIframeSrc)
 	<Program program={program} />
 </section>
 
-{
-	hasManualEmbed ? null : (
-		<script>
-			const mount = document.querySelector('.video__live')
-			const src = mount?.getAttribute('data-live-src')
+{/* Astro hoists component scripts at build time, so this is bundled regardless of the
+   branch above. It is a no-op without the mount point a manual embed replaces. */}
+<script>
+	const mount = document.querySelector('.video__live')
+	const src = mount?.getAttribute('data-live-src')
 
-			if (mount && src) {
-				let showingLive: boolean | null = null
+	if (mount && src) {
+		let showingLive: boolean | null = null
 
-				function showLive() {
-					const iframe = document.createElement('iframe')
-					iframe.src = src!
-					iframe.title = 'Canino FM live'
-					iframe.allow =
-						'accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture; web-share'
-					iframe.referrerPolicy = 'strict-origin-when-cross-origin'
-					iframe.allowFullscreen = true
-					mount!.replaceChildren(iframe)
+		/**
+		 * Go live on the first positive reading, but require two consecutive negatives
+		 * before tearing a player down: a single bad minute must not interrupt a broadcast.
+		 */
+		const OFFLINE_READINGS_BEFORE_TEARDOWN = 2
+		let consecutiveOffline = 0
+
+		function showLive() {
+			const iframe = document.createElement('iframe')
+			iframe.src = src!
+			iframe.title = 'Canino FM live'
+			iframe.allow =
+				'accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture; web-share'
+			iframe.referrerPolicy = 'strict-origin-when-cross-origin'
+			iframe.allowFullscreen = true
+			mount!.replaceChildren(iframe)
+		}
+
+		function showOffline() {
+			const p = document.createElement('p')
+			p.className = 'video__offline'
+			p.textContent = 'Offline'
+			mount!.replaceChildren(p)
+		}
+
+		async function refresh() {
+			let live: boolean | null = null
+
+			try {
+				// Cached 30s in the browser and 60s at the edge, so this is cheap to poll.
+				const res = await fetch('/api/live-status')
+				if (res.ok) {
+					const payload = await res.json()
+					// `null` means the check itself failed, which is not the same as being off air.
+					live = typeof payload?.live === 'boolean' ? payload.live : null
 				}
-
-				function showOffline() {
-					const p = document.createElement('p')
-					p.className = 'video__offline'
-					p.textContent = 'Offline'
-					mount!.replaceChildren(p)
-				}
-
-				async function refresh() {
-					try {
-						// Cached 30s in the browser and 60s at the edge, so this is cheap to poll.
-						const res = await fetch('/api/live-status')
-						if (!res.ok) return
-						const { live } = await res.json()
-						if (live === showingLive) return
-						showingLive = live
-						if (live) showLive()
-						else showOffline()
-					} catch {
-						// Offline browser or a failed function call: leave whatever is on screen.
-					}
-				}
-
-				refresh()
-				setInterval(refresh, 60_000)
+			} catch {
+				// Browser offline, or the function is unreachable: treat as "do not know".
 			}
-		</script>
-	)
-}
+
+			if (live === null) return
+
+			if (live) {
+				consecutiveOffline = 0
+				if (showingLive !== true) {
+					showingLive = true
+					showLive()
+				}
+				return
+			}
+
+			consecutiveOffline += 1
+			// Nothing is playing yet, so there is no teardown to delay.
+			const needed = showingLive === true ? OFFLINE_READINGS_BEFORE_TEARDOWN : 1
+			if (consecutiveOffline >= needed && showingLive !== false) {
+				showingLive = false
+				showOffline()
+			}
+		}
+
+		refresh()
+		setInterval(refresh, 60_000)
+	}
+</script>
 
 <style is:global>
 	.hero {
