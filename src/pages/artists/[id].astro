@@ -98,14 +98,16 @@ const { artistName, shows, allShows, allArtists, settings } = Astro.props
 
 	.artist-page .back {
 		display: inline-block;
-		margin-bottom: calc(20 / 1920 * 100vw);
+		/* Opens the gap above the name, so it is not crowded by the back link. */
+		margin-bottom: calc(120 / 1920 * 100vw);
 		text-transform: uppercase;
 		cursor: pointer;
 	}
 
 	.artist-page .name {
 		margin: 0 0 calc(40 / 1920 * 100vw);
-		font-size: calc(64 / 1920 * 100vw);
+		/* The site's largest size (artists list, about), rather than a one-off 64. */
+		font-size: calc(42 / 1920 * 100vw);
 		line-height: 0.91;
 		letter-spacing: -0.03em;
 		text-transform: uppercase;
@@ -113,11 +115,12 @@ const { artistName, shows, allShows, allArtists, settings } = Astro.props
 
 	@media (max-width: 767px) {
 		.artist-page .back {
-			margin-bottom: calc(20 / 375 * 100vw);
+			margin-bottom: calc(80 / 375 * 100vw);
 		}
 
 		.artist-page .name {
-			font-size: calc(32 / 375 * 100vw);
+			/* Matches the artists list on mobile, as 42 does on desktop. */
+			font-size: calc(24 / 375 * 100vw);
 			margin-bottom: calc(20 / 375 * 100vw);
 		}
 	}
