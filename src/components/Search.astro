@@ -99,12 +99,16 @@ const records: SearchRecord[] = [
 			li.appendChild(title)
 			li.appendChild(subtitle)
 			li.addEventListener('click', () => {
+				if (record.type === 'artist' && record.href) {
+					window.location.href = record.href
+					return
+				}
 				if (record.type === 'show' && record.soundcloudSrc) {
 					playShow(record.soundcloudSrc, record.title)
-					closeSearch()
-				} else if (record.type === 'artist' && record.href) {
-					window.location.href = record.href
 				}
+				// Closes either way: a show with no audio used to leave the overlay open, so
+				// the click looked like the page had frozen.
+				closeSearch()
 			})
 			results.appendChild(li)
 		}

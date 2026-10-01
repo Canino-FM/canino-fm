@@ -54,30 +54,61 @@
 	const iframe = document.getElementById('player-widget') as HTMLIFrameElement | null
 
 	if (root && iframe) {
-		const toggle = root.querySelector('.player__toggle') as HTMLButtonElement
-		const titleEl = root.querySelector('.player__title') as HTMLElement
-		const artistEl = root.querySelector('.player__artist') as HTMLElement
-		const seek = root.querySelector('.player__seek') as HTMLElement
-		const progress = root.querySelector('.player__progress') as HTMLElement
-		const elapsedEl = root.querySelector('.player__elapsed') as HTMLElement
-		const durationEl = root.querySelector('.player__duration') as HTMLElement
-		const sourceEl = root.querySelector('.player__source') as HTMLAnchorElement
+		const playerRoot = root
+		const widgetFrame = iframe
+		const toggle = playerRoot.querySelector('.player__toggle') as HTMLButtonElement
+		const titleEl = playerRoot.querySelector('.player__title') as HTMLElement
+		const artistEl = playerRoot.querySelector('.player__artist') as HTMLElement
+		const seek = playerRoot.querySelector('.player__seek') as HTMLElement
+		const progress = playerRoot.querySelector('.player__progress') as HTMLElement
+		const elapsedEl = playerRoot.querySelector('.player__elapsed') as HTMLElement
+		const durationEl = playerRoot.querySelector('.player__duration') as HTMLElement
+		const sourceEl = playerRoot.querySelector('.player__source') as HTMLAnchorElement
+
+		/** How long to wait for the widget to answer before giving up on it. */
+		const READY_TIMEOUT_MS = 10_000
+
+		type PlayerState = 'empty' | 'loading' | 'ready' | 'fallback' | 'error'
 
 		const sc = () => (window as any).SC
 		let widget: any = null
 		let durationMs = 0
 		let apiLoad: Promise<void> | null = null
-		let transportBound = false
+		/** Increments per request so a superseded play cannot apply its result. */
+		let playToken = 0
+		let lastAnnouncedPct = -1
 
-		/** Fetched on first play rather than on every page load. */
+		/**
+		 * The only writer of player state. `enterFallback` used to strip aria-hidden and
+		 * tabindex without an inverse, so recovering from a fallback left an invisible
+		 * SoundCloud iframe permanently in the tab order.
+		 */
+		function setState(state: PlayerState) {
+			playerRoot.dataset.state = state
+			const widgetIsVisible = state === 'fallback'
+			widgetFrame.toggleAttribute('aria-hidden', !widgetIsVisible)
+			if (widgetIsVisible) widgetFrame.removeAttribute('tabindex')
+			else widgetFrame.setAttribute('tabindex', '-1')
+		}
+
+		/** Fetched on first play, so visitors who never press play never pay for it. */
 		function loadWidgetApi(): Promise<void> {
 			if (apiLoad) return apiLoad
 			apiLoad = new Promise<void>((resolve, reject) => {
 				if (sc()?.Widget) return resolve()
 				const script = document.createElement('script')
 				script.src = 'https://w.soundcloud.com/player/api.js'
-				script.onload = () => resolve()
-				script.onerror = () => reject(new Error('SoundCloud widget API did not load'))
+				// onload fires for any 200, including a blocker's no-op stub or a captive
+				// portal's login page. Resolving on those memoises success, so the fallback
+				// built for exactly this case never runs and SC.Widget throws uncaught.
+				script.onload = () =>
+					sc()?.Widget
+						? resolve()
+						: reject(new Error('SoundCloud widget API loaded but did not define SC.Widget'))
+				script.onerror = () => {
+					script.remove()
+					reject(new Error('SoundCloud widget API did not load'))
+				}
 				document.head.appendChild(script)
 			}).catch((error) => {
 				// Forget the failure, or one flaky load would pin the page in fallback for good.
@@ -90,31 +121,38 @@
 		function formatTime(ms: number): string {
 			if (!Number.isFinite(ms) || ms <= 0) return '0:00'
 			const total = Math.floor(ms / 1000)
-			return `${Math.floor(total / 60)}:${String(total % 60).padStart(2, '0')}`
+			const seconds = String(total % 60).padStart(2, '0')
+			const minutes = Math.floor(total / 60) % 60
+			const hours = Math.floor(total / 3600)
+			// Shows run well past an hour, so without this a 90-minute set reads "90:00".
+			if (hours > 0) return `${hours}:${String(minutes).padStart(2, '0')}:${seconds}`
+			return `${minutes}:${seconds}`
 		}
 
 		function setPlaying(playing: boolean) {
-			root!.dataset.playing = playing ? 'true' : 'false'
+			playerRoot.dataset.playing = playing ? 'true' : 'false'
 			toggle.setAttribute('aria-label', playing ? 'Pause' : 'Play')
 		}
 
 		function setProgress(ratio: number) {
-			const pct = Math.max(0, Math.min(1, ratio)) * 100
-			progress.style.width = `${pct}%`
-			seek.setAttribute('aria-valuenow', String(Math.round(pct)))
+			const clamped = Math.max(0, Math.min(1, ratio))
+			progress.style.width = `${clamped * 100}%`
+
+			// PLAY_PROGRESS fires ~10x a second. Rewriting aria-valuenow that often makes a
+			// screen reader re-announce continuously, so only whole percents are published.
+			const pct = Math.round(clamped * 100)
+			if (pct === lastAnnouncedPct) return
+			lastAnnouncedPct = pct
+			seek.setAttribute('aria-valuenow', String(pct))
+			if (durationMs > 0) {
+				seek.setAttribute(
+					'aria-valuetext',
+					`${formatTime(clamped * durationMs)} of ${formatTime(durationMs)}`,
+				)
+			}
 		}
 
-		/** The widget URL carries SoundCloud's own orange; the site is monochrome. */
-		function widgetUrl(src: string): string {
-			const url = new URL(src, location.href)
-			url.searchParams.set('auto_play', 'true')
-			url.searchParams.set('hide_related', 'true')
-			url.searchParams.set('show_comments', 'false')
-			url.searchParams.set('visual', 'false')
-			return url.toString()
-		}
-
-		/** `widget.load()` wants the track itself, which the widget URL carries as ?url=. */
+		/** `widget.load()` wants the track itself, which a widget URL carries as ?url=. */
 		function trackUrl(src: string): string {
 			try {
 				return new URL(src, location.href).searchParams.get('url') || src
@@ -123,10 +161,36 @@
 			}
 		}
 
-		/** Clears per-track state so nothing from the previous show leaks into this one. */
+		/**
+		 * Builds the player URL from scratch rather than passing the stored value through.
+		 *
+		 * Sanity's `soundcloud` field is free text and `parseSoundcloudSrc` accepts any URL,
+		 * so a plain permalink reaches us — 6 of the 300 shows hold one today. Framing
+		 * soundcloud.com is refused (X-Frame-Options: SAMEORIGIN), so the widget would never
+		 * fire READY and the player would wedge. Constructing the w.soundcloud.com URL here
+		 * normalises every input shape, and refusing anything that is not http(s) keeps a
+		 * CMS value from reaching `iframe.src` unvalidated.
+		 */
+		function widgetUrl(src: string): string {
+			const track = trackUrl(src)
+			if (!/^https?:\/\//i.test(track)) throw new Error(`unusable track url: ${track}`)
+			const url = new URL('https://w.soundcloud.com/player/')
+			url.searchParams.set('url', track)
+			url.searchParams.set('auto_play', 'true')
+			url.searchParams.set('hide_related', 'true')
+			url.searchParams.set('show_comments', 'false')
+			// Keeps the fallback widget, the one state where it is visible, at 100px.
+			url.searchParams.set('visual', 'false')
+			// The site is monochrome; SoundCloud defaults to orange.
+			url.searchParams.set('color', '#000000')
+			return url.toString()
+		}
+
+		/** Clears the per-track display state so nothing from the previous show survives. */
 		function resetForTrack(title: string) {
 			titleEl.textContent = title
 			artistEl.textContent = ''
+			lastAnnouncedPct = -1
 			setProgress(0)
 			elapsedEl.textContent = '0:00'
 			durationEl.textContent = '0:00'
@@ -134,18 +198,20 @@
 			durationMs = 0
 			// Likewise the credit link, which must never point at the previous track.
 			sourceEl.removeAttribute('href')
-			root!.dataset.state = 'loading'
+			// Otherwise the pause icon claims the new track is playing while it still loads.
+			setPlaying(false)
+			setState('loading')
 		}
 
-		/** Runs per track; the transport handlers below are bound once for the widget's life. */
+		/** Runs per track; the transport handlers are bound once in `createWidget`. */
 		function readTrackMetadata() {
-			root!.dataset.state = 'ready'
-
 			widget.getCurrentSound((sound: any) => {
 				if (!sound) return
 				if (sound.title) titleEl.textContent = sound.title
 				artistEl.textContent = sound.user?.username ?? ''
-				if (sound.permalink_url) sourceEl.href = sound.permalink_url
+				if (typeof sound.permalink_url === 'string' && /^https:\/\//.test(sound.permalink_url)) {
+					sourceEl.href = sound.permalink_url
+				}
 			})
 
 			widget.getDuration((ms: number) => {
@@ -155,17 +221,31 @@
 		}
 
 		/**
-		 * One widget for the page, created on first play. Binding these per track would stack
-		 * a fresh set of callbacks on every show, so after a few plays each progress tick
-		 * would run them all.
+		 * One widget for the page. SoundCloud re-fires READY after every `widget.load()`, so
+		 * binding the transport inside the READY handler without a guard would stack another
+		 * full set of callbacks on every track.
+		 *
+		 * Rejects on a deadline: a blocked or unreachable frame never answers, and without
+		 * this the awaiting `play()` would hang forever with the bar stuck on "loading".
 		 */
 		function createWidget(src: string): Promise<void> {
-			return new Promise((resolve) => {
-				iframe!.src = widgetUrl(src)
-				widget = sc().Widget(iframe)
+			return new Promise<void>((resolve, reject) => {
+				let settled = false
+				const timer = setTimeout(() => {
+					if (settled) return
+					settled = true
+					widget = null
+					reject(new Error('SoundCloud widget never became ready'))
+				}, READY_TIMEOUT_MS)
+
+				widgetFrame.src = widgetUrl(src)
+				widget = sc().Widget(widgetFrame)
+
 				widget.bind(sc().Widget.Events.READY, () => {
-					if (transportBound) return
-					transportBound = true
+					if (settled) return
+					settled = true
+					clearTimeout(timer)
+
 					widget.bind(sc().Widget.Events.PLAY, () => setPlaying(true))
 					widget.bind(sc().Widget.Events.PAUSE, () => setPlaying(false))
 					widget.bind(sc().Widget.Events.FINISH, () => {
@@ -176,41 +256,76 @@
 						elapsedEl.textContent = formatTime(e.currentPosition)
 						if (durationMs > 0) setProgress(e.currentPosition / durationMs)
 					})
+
 					resolve()
 				})
 			})
 		}
 
+		/** The widget API itself is unavailable: hand playback back to SoundCloud's own UI. */
 		function enterFallback(src: string) {
-			root!.dataset.state = 'fallback'
+			try {
+				widgetFrame.src = widgetUrl(src)
+			} catch {
+				showError(src)
+				return
+			}
 			// The widget becomes the only player on screen, so it has to be reachable.
-			iframe!.removeAttribute('aria-hidden')
-			iframe!.removeAttribute('tabindex')
-			// The raw Sanity embed is auto_play=false, so the click would otherwise do nothing.
-			iframe!.src = widgetUrl(src)
+			setState('fallback')
+		}
+
+		/** Last resort: no player at all, but never a dead bar with no way out. */
+		function showError(src: string) {
+			setState('error')
+			artistEl.textContent = ''
+			const track = trackUrl(src)
+			if (/^https?:\/\//i.test(track)) sourceEl.href = track
 		}
 
 		async function play(detail: PlayDetail) {
 			if (!detail?.src) return
 
-			// Show the requested title immediately; SoundCloud's own metadata replaces it below.
+			const token = ++playToken
+			// Show the requested title immediately; SoundCloud's metadata replaces it below.
 			resetForTrack(detail.title ?? '')
 
 			try {
 				await loadWidgetApi()
-			} catch {
+			} catch (error) {
+				// The browser console is the only diagnostic surface this feature has.
+				console.warn('[player] widget API unavailable, falling back to SoundCloud', error)
 				enterFallback(detail.src)
 				return
 			}
+			// A newer click arrived while the script was loading; that request owns the player.
+			if (token !== playToken) return
 
-			if (!widget) {
-				await createWidget(detail.src)
-			} else {
-				await new Promise<void>((resolve) =>
-					widget.load(trackUrl(detail.src), { auto_play: true, callback: resolve }),
-				)
+			try {
+				if (!widget) {
+					await createWidget(detail.src)
+				} else {
+					await new Promise<void>((resolve, reject) => {
+						const timer = setTimeout(
+							() => reject(new Error('SoundCloud never loaded the track')),
+							READY_TIMEOUT_MS,
+						)
+						widget.load(trackUrl(detail.src), {
+							auto_play: true,
+							callback: () => {
+								clearTimeout(timer)
+								resolve()
+							},
+						})
+					})
+				}
+			} catch (error) {
+				console.warn('[player] could not start this track', error)
+				showError(detail.src)
+				return
 			}
+			if (token !== playToken) return
 
+			setState('ready')
 			readTrackMetadata()
 			widget.play()
 		}
@@ -220,26 +335,33 @@
 			widget.isPaused((paused: boolean) => (paused ? widget.play() : widget.pause()))
 		})
 
-		function seekToClientX(clientX: number) {
+		function seekToMs(ms: number) {
 			if (!widget || durationMs <= 0) return
-			const rect = seek.getBoundingClientRect()
-			const ratio = Math.max(0, Math.min(1, (clientX - rect.left) / rect.width))
-			widget.seekTo(ratio * durationMs)
-			setProgress(ratio)
+			const clamped = Math.max(0, Math.min(durationMs, ms))
+			widget.seekTo(clamped)
+			setProgress(clamped / durationMs)
 		}
 
-		seek.addEventListener('click', (e) => seekToClientX(e.clientX))
+		seek.addEventListener('click', (e) => {
+			if (durationMs <= 0) return
+			const rect = seek.getBoundingClientRect()
+			seekToMs(((e.clientX - rect.left) / rect.width) * durationMs)
+		})
+
 		seek.addEventListener('keydown', (e) => {
-			if (!widget || durationMs <= 0) return
 			const step = durationMs * 0.05
-			if (e.key === 'ArrowRight' || e.key === 'ArrowLeft') {
+			if (e.key === 'Home') {
 				e.preventDefault()
-				widget.getPosition((pos: number) => {
-					const next = e.key === 'ArrowRight' ? pos + step : pos - step
-					const clamped = Math.max(0, Math.min(durationMs, next))
-					widget.seekTo(clamped)
-					setProgress(clamped / durationMs)
-				})
+				seekToMs(0)
+			} else if (e.key === 'End') {
+				e.preventDefault()
+				seekToMs(durationMs)
+			} else if (e.key === 'ArrowRight' || e.key === 'ArrowLeft') {
+				e.preventDefault()
+				if (!widget || durationMs <= 0) return
+				widget.getPosition((pos: number) =>
+					seekToMs(e.key === 'ArrowRight' ? pos + step : pos - step),
+				)
 			}
 		})
 
