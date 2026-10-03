@@ -57,6 +57,7 @@ const searchIndexJson = JSON.stringify(records).replace(/</g, '\\u003c')
 
 <script>
 	import Fuse from 'fuse.js'
+	import { navigate } from 'astro:transitions/client'
 
 	interface SearchRecord {
 		type: 'show' | 'artist'
@@ -81,8 +82,9 @@ const searchIndexJson = JSON.stringify(records).replace(/</g, '\\u003c')
 		threshold: 0.35,
 	})
 
-	const input = document.getElementById('search-input') as HTMLInputElement | null
-	const results = document.getElementById('search-results')
+	// Reassigned by bindSearch: client-side navigation replaces the overlay with a fresh copy.
+	let input: HTMLInputElement | null = null
+	let results: HTMLElement | null = null
 
 	function playShow(soundcloudSrc: string, title: string) {
 		if (!soundcloudSrc) return
@@ -111,7 +113,8 @@ const searchIndexJson = JSON.stringify(records).replace(/</g, '\\u003c')
 			li.appendChild(subtitle)
 			li.addEventListener('click', () => {
 				if (record.type === 'artist' && record.href) {
-					window.location.href = record.href
+					// A full page load here would stop the player.
+					navigate(record.href)
 					return
 				}
 				if (record.type === 'show' && record.soundcloudSrc) {
@@ -125,39 +128,50 @@ const searchIndexJson = JSON.stringify(records).replace(/</g, '\\u003c')
 		}
 	}
 
-	input?.addEventListener('input', () => {
-		const query = input.value.trim()
-		if (!query) {
-			renderResults([])
-			return
+	function toggleSearch() {
+		// Keep the two overlays mutually exclusive, so closing Search never reveals a stale About.
+		document.body.classList.remove('show-about')
+		document.body.classList.toggle('show-search')
+		if (document.body.classList.contains('show-search')) {
+			input?.focus()
 		}
-		renderResults(fuse.search(query).map((r) => r.item))
-	})
+	}
 
-	document.querySelectorAll('.button--search').forEach((btn) => {
-		function toggleSearch() {
-			// Keep the two overlays mutually exclusive, so closing Search never reveals a stale About.
-			document.body.classList.remove('show-about')
-			document.body.classList.toggle('show-search')
-			if (document.body.classList.contains('show-search')) {
-				input?.focus()
+	/** Runs once per visit, then again after each navigation for that page's fresh elements. */
+	function bindSearch() {
+		input = document.getElementById('search-input') as HTMLInputElement | null
+		results = document.getElementById('search-results')
+
+		const field = input
+		field?.addEventListener('input', () => {
+			const query = field.value.trim()
+			if (!query) {
+				renderResults([])
+				return
 			}
-		}
-		btn.addEventListener('click', toggleSearch)
-		btn.addEventListener('keydown', (e) => {
-			if (e instanceof KeyboardEvent && (e.key === 'Enter' || e.key === ' ')) {
-				e.preventDefault()
-				toggleSearch()
-			}
+			renderResults(fuse.search(query).map((r) => r.item))
 		})
-	})
+
+		document.querySelectorAll('.button--search').forEach((btn) => {
+			btn.addEventListener('click', toggleSearch)
+			btn.addEventListener('keydown', (e) => {
+				if (e instanceof KeyboardEvent && (e.key === 'Enter' || e.key === ' ')) {
+					e.preventDefault()
+					toggleSearch()
+				}
+			})
+		})
+
+		document.querySelector('.search')?.addEventListener('click', (e) => {
+			if (e.target === e.currentTarget) closeSearch()
+		})
+	}
+
+	bindSearch()
+	document.addEventListener('astro:after-swap', bindSearch)
 
 	document.addEventListener('keydown', (e) => {
 		if (e.key === 'Escape') closeSearch()
-	})
-
-	document.querySelector('.search')?.addEventListener('click', (e) => {
-		if (e.target === e.currentTarget) closeSearch()
 	})
 </script>
 

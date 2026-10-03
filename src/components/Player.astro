@@ -55,7 +55,8 @@
 
 	if (root && iframe) {
 		const playerRoot = root
-		const widgetFrame = iframe
+		/** Replaced on every track; see `freshFrame`. */
+		let widgetFrame = iframe
 		const toggle = playerRoot.querySelector('.player__toggle') as HTMLButtonElement
 		const titleEl = playerRoot.querySelector('.player__title') as HTMLElement
 		const artistEl = playerRoot.querySelector('.player__artist') as HTMLElement
@@ -152,7 +153,7 @@
 			}
 		}
 
-		/** `widget.load()` wants the track itself, which a widget URL carries as ?url=. */
+		/** The track itself, which a widget URL carries as ?url=. */
 		function trackUrl(src: string): string {
 			try {
 				return new URL(src, location.href).searchParams.get('url') || src
@@ -221,9 +222,25 @@
 		}
 
 		/**
-		 * One widget for the page. SoundCloud re-fires READY after every `widget.load()`, so
-		 * binding the transport inside the READY handler without a guard would stack another
-		 * full set of callbacks on every track.
+		 * Swaps in a never-navigated copy of the widget iframe.
+		 *
+		 * An iframe shares the tab's session history, so navigating one that has already
+		 * loaded adds a history entry — `widget.load()` does exactly that. With client-side
+		 * routing the player outlives page changes, so Back would step the hidden iframe to
+		 * the previous track instead of going back a page. A fresh iframe's first load
+		 * replaces its initial about:blank and adds nothing.
+		 */
+		function freshFrame() {
+			if (!widgetFrame.hasAttribute('src')) return
+			const next = widgetFrame.cloneNode(false) as HTMLIFrameElement
+			next.removeAttribute('src')
+			widgetFrame.replaceWith(next)
+			widgetFrame = next
+		}
+
+		/**
+		 * One widget per track, on its own fresh iframe (see `freshFrame`). The previous
+		 * iframe is removed, so its bindings can never fire again.
 		 *
 		 * Rejects on a deadline: a blocked or unreachable frame never answers, and without
 		 * this the awaiting `play()` would hang forever with the bar stuck on "loading".
@@ -231,28 +248,31 @@
 		function createWidget(src: string): Promise<void> {
 			return new Promise<void>((resolve, reject) => {
 				let settled = false
+				freshFrame()
+				widgetFrame.src = widgetUrl(src)
+				const created = sc().Widget(widgetFrame)
+				widget = created
+
 				const timer = setTimeout(() => {
 					if (settled) return
 					settled = true
-					widget = null
+					// A newer track may already own the player; only clear our own widget.
+					if (widget === created) widget = null
 					reject(new Error('SoundCloud widget never became ready'))
 				}, READY_TIMEOUT_MS)
 
-				widgetFrame.src = widgetUrl(src)
-				widget = sc().Widget(widgetFrame)
-
-				widget.bind(sc().Widget.Events.READY, () => {
+				created.bind(sc().Widget.Events.READY, () => {
 					if (settled) return
 					settled = true
 					clearTimeout(timer)
 
-					widget.bind(sc().Widget.Events.PLAY, () => setPlaying(true))
-					widget.bind(sc().Widget.Events.PAUSE, () => setPlaying(false))
-					widget.bind(sc().Widget.Events.FINISH, () => {
+					created.bind(sc().Widget.Events.PLAY, () => setPlaying(true))
+					created.bind(sc().Widget.Events.PAUSE, () => setPlaying(false))
+					created.bind(sc().Widget.Events.FINISH, () => {
 						setPlaying(false)
 						setProgress(0)
 					})
-					widget.bind(sc().Widget.Events.PLAY_PROGRESS, (e: { currentPosition: number }) => {
+					created.bind(sc().Widget.Events.PLAY_PROGRESS, (e: { currentPosition: number }) => {
 						elapsedEl.textContent = formatTime(e.currentPosition)
 						if (durationMs > 0) setProgress(e.currentPosition / durationMs)
 					})
@@ -265,7 +285,9 @@
 		/** The widget API itself is unavailable: hand playback back to SoundCloud's own UI. */
 		function enterFallback(src: string) {
 			try {
-				widgetFrame.src = widgetUrl(src)
+				const url = widgetUrl(src)
+				freshFrame()
+				widgetFrame.src = url
 			} catch {
 				showError(src)
 				return
@@ -301,24 +323,10 @@
 			if (token !== playToken) return
 
 			try {
-				if (!widget) {
-					await createWidget(detail.src)
-				} else {
-					await new Promise<void>((resolve, reject) => {
-						const timer = setTimeout(
-							() => reject(new Error('SoundCloud never loaded the track')),
-							READY_TIMEOUT_MS,
-						)
-						widget.load(trackUrl(detail.src), {
-							auto_play: true,
-							callback: () => {
-								clearTimeout(timer)
-								resolve()
-							},
-						})
-					})
-				}
+				await createWidget(detail.src)
 			} catch (error) {
+				// Superseded: a newer click replaced this track's iframe, so it never got ready.
+				if (token !== playToken) return
 				console.warn('[player] could not start this track', error)
 				showError(detail.src)
 				return

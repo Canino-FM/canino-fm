@@ -61,18 +61,25 @@ const { artistName, shows, allShows, allArtists, settings } = Astro.props
 	<Footer />
 	<script is:inline>
 		;(function () {
-			document.querySelectorAll('.artist-page .show[data-soundcloud]').forEach(function (el) {
-				el.addEventListener('click', function () {
-					const src = el.getAttribute('data-soundcloud') || ''
-					if (!src) return
-					const title = el.querySelector('.title')
-					document.dispatchEvent(
-						new CustomEvent('canino:play', {
-							detail: { src: src, title: title ? title.textContent : '' },
-						}),
-					)
+			// Runs once per visit (every artist page carries this same script), so the shows on
+			// pages reached by client-side navigation are bound after each swap.
+			function bindShows() {
+				document.querySelectorAll('.artist-page .show[data-soundcloud]').forEach(function (el) {
+					el.addEventListener('click', function () {
+						const src = el.getAttribute('data-soundcloud') || ''
+						if (!src) return
+						const title = el.querySelector('.title')
+						document.dispatchEvent(
+							new CustomEvent('canino:play', {
+								detail: { src: src, title: title ? title.textContent : '' },
+							}),
+						)
+					})
 				})
-			})
+			}
+
+			bindShows()
+			document.addEventListener('astro:after-swap', bindShows)
 		})()
 	</script>
 </BaseLayout>
