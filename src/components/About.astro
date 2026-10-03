@@ -52,21 +52,28 @@ const contactEmail = settings.contact?.trim() ?? ''
 </div>
 
 <script>
+	function toggleAbout() {
+		// About sits below Search in the stack, so it would otherwise open invisibly behind it.
+		document.body.classList.remove('show-search')
+		document.body.classList.toggle('show-about')
+	}
+
 	// Lives here rather than on the homepage so the panel works wherever About is rendered.
-	document.querySelectorAll('.button--about').forEach((btn) => {
-		function toggleAbout() {
-			// About sits below Search in the stack, so it would otherwise open invisibly behind it.
-			document.body.classList.remove('show-search')
-			document.body.classList.toggle('show-about')
-		}
-		btn.addEventListener('click', toggleAbout)
-		btn.addEventListener('keydown', (e) => {
-			if (e instanceof KeyboardEvent && (e.key === 'Enter' || e.key === ' ')) {
-				e.preventDefault()
-				toggleAbout()
-			}
+	// Runs once per visit, so the header's fresh buttons are re-bound after each navigation.
+	function bindAboutButtons() {
+		document.querySelectorAll('.button--about').forEach((btn) => {
+			btn.addEventListener('click', toggleAbout)
+			btn.addEventListener('keydown', (e) => {
+				if (e instanceof KeyboardEvent && (e.key === 'Enter' || e.key === ' ')) {
+					e.preventDefault()
+					toggleAbout()
+				}
+			})
 		})
-	})
+	}
+
+	bindAboutButtons()
+	document.addEventListener('astro:after-swap', bindAboutButtons)
 
 	document.addEventListener('keydown', (e) => {
 		if (e.key === 'Escape') document.body.classList.remove('show-about')

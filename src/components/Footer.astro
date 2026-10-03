@@ -2,7 +2,8 @@
 import Player from '@/components/Player.astro'
 ---
 
-<footer class="footer">
+{/* Kept in place across navigation (see BaseLayout), so playback is never interrupted. */}
+<footer class="footer" data-keep-on-navigate>
 	<div class="footer__container">
 		<Player />
 	</div>

@@ -1,4 +1,6 @@
 ---
+import { ClientRouter } from 'astro:transitions'
+
 interface Props {
 	title?: string
 	description?: string
@@ -40,7 +42,7 @@ const introOnceScript = `(function () {
 ---
 
 <!doctype html>
-<html lang="en" class="no-js">
+<html lang="en" class="no-js" transition:animate="none">
 	<head>
 		<meta charset="UTF-8" />
 		<meta name="viewport" content="width=device-width, initial-scale=1.0" />
@@ -80,12 +82,67 @@ const introOnceScript = `(function () {
 		<link rel="apple-touch-icon" href="/apple-touch-icon.png" sizes="180x180" />
 		<meta name="msapplication-TileImage" content="/mstile-270x270.png" />
 		<title>{title}</title>
+		{/* Client-side navigation, so the player survives page changes. `transition:animate="none"`
+		   on <html> keeps navigation looking as it did with full page loads. */}
+		<ClientRouter />
 	</head>
 	<body class:list={[{ 'skip-intro': skipIntro }]}>
 		{introOncePerSession && !skipIntro ? <script is:inline set:html={introOnceScript} /> : null}
 		<slot />
 	</body>
 </html>
+
+<script>
+	import { swapFunctions } from 'astro:transitions/client'
+
+	/**
+	 * Body children marked with this survive navigation untouched, so the player keeps
+	 * streaming from page to page.
+	 *
+	 * Astro's own `transition:persist` is not enough: in browsers without
+	 * `Element.moveBefore` it re-parents the element, and moving an iframe reloads it,
+	 * cutting the audio. Leaving the node where it is avoids moving it at all.
+	 */
+	const KEEP = '[data-keep-on-navigate]'
+
+	function swapBodyKeeping(newBody: HTMLElement, kept: Element, incoming: Element) {
+		const body = document.body
+		// The body class carries page state (intro progress, open overlays), so take the new
+		// page's. The intro is never replayed mid-visit: it slides the footer, and the player
+		// that is still playing in it, off screen.
+		body.className = newBody.className
+		body.classList.add('skip-intro')
+
+		for (const node of [...body.childNodes]) {
+			if (node !== kept) node.remove()
+		}
+		// Everything around the new page's copy of the kept node lands on the same side of ours.
+		let beforeKept = true
+		for (const node of [...newBody.childNodes]) {
+			if (node === incoming) {
+				beforeKept = false
+				continue
+			}
+			if (beforeKept) body.insertBefore(node, kept)
+			else body.append(node)
+		}
+	}
+
+	document.addEventListener('astro:before-swap', (event) => {
+		const kept = document.body.querySelector(`:scope > ${KEEP}`)
+		const incoming = event.newDocument.body.querySelector(`:scope > ${KEEP}`)
+		// A page without the marker gets Astro's default swap.
+		if (!kept || !incoming) return
+
+		event.swap = () => {
+			const doc = event.newDocument
+			swapFunctions.deselectScripts(doc)
+			swapFunctions.swapRootAttributes(doc)
+			swapFunctions.swapHeadElements(doc)
+			swapBodyKeeping(doc.body, kept, incoming)
+		}
+	})
+</script>
 
 <style is:global>
 	@font-face {

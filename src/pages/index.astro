@@ -66,43 +66,44 @@ const linkedArtists = data.artists.filter((artist) => showsByArtist.has(artist.i
 				scrollToPending()
 			}
 
-			document.querySelectorAll('#shows .show[data-soundcloud]').forEach(function (el) {
-				el.addEventListener('click', function () {
-					const raw = el.getAttribute('data-soundcloud') || ''
-					const src = raw.replace(/%23ff5500/gi, '%23000000')
-					if (!src) return
-					const player = document.getElementById('player')
-					if (!player) return
-					player.replaceChildren()
-					const iframe = document.createElement('iframe')
-					iframe.width = '100%'
-					iframe.height = '100'
-					iframe.setAttribute('scrolling', 'no')
-					iframe.setAttribute('frameborder', 'no')
-					iframe.setAttribute('allow', 'autoplay')
-					iframe.src = src
-					player.appendChild(iframe)
+			// This script runs once per visit, but client-side navigation brings in fresh page
+			// elements, so anything bound to an element is re-bound after every swap.
+			function bindPage() {
+				document.querySelectorAll('#shows .show[data-soundcloud]').forEach(function (el) {
+					el.addEventListener('click', function () {
+						const src = el.getAttribute('data-soundcloud') || ''
+						if (!src) return
+						const title = el.querySelector('.title')
+						document.dispatchEvent(
+							new CustomEvent('canino:play', {
+								detail: { src: src, title: title ? title.textContent : '' },
+							}),
+						)
+					})
 				})
-			})
 
-			document.querySelectorAll('.menu .item a[href*="#"]').forEach(function (link) {
-				link.addEventListener('click', function (e) {
-					const href = link.getAttribute('href') || ''
-					const id = href.slice(href.indexOf('#') + 1)
-					if (!id) return
-					// getElementById over querySelector: a fragment that is not a valid CSS
-					// selector (a leading digit, an encoded character) makes querySelector throw.
-					const target = document.getElementById(id)
-					// Not on this page, so fall through and let the browser navigate.
-					if (!target) return
-					// Both overlays cover the viewport; leaving one open hides the section we scroll to.
-					body.classList.remove('show-about')
-					body.classList.remove('show-search')
-					e.preventDefault()
-					const top = target.getBoundingClientRect().top + window.scrollY
-					window.scrollTo({ top: top, behavior: 'smooth' })
+				document.querySelectorAll('.menu .item a[href*="#"]').forEach(function (link) {
+					link.addEventListener('click', function (e) {
+						const href = link.getAttribute('href') || ''
+						const id = href.slice(href.indexOf('#') + 1)
+						if (!id) return
+						// getElementById over querySelector: a fragment that is not a valid CSS
+						// selector (a leading digit, an encoded character) makes querySelector throw.
+						const target = document.getElementById(id)
+						// Not on this page, so fall through and let the router navigate.
+						if (!target) return
+						// Both overlays cover the viewport; leaving one open hides the section we scroll to.
+						body.classList.remove('show-about')
+						body.classList.remove('show-search')
+						e.preventDefault()
+						const top = target.getBoundingClientRect().top + window.scrollY
+						window.scrollTo({ top: top, behavior: 'smooth' })
+					})
 				})
-			})
+			}
+
+			bindPage()
+			document.addEventListener('astro:after-swap', bindPage)
 
 			document.addEventListener('click', function (e) {
 				const t = e.target

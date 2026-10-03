@@ -8,7 +8,9 @@ interface Props {
 const { show } = Astro.props
 ---
 
-<article class="show" data-soundcloud={show.soundcloudSrc}>
+{/* Omitted rather than empty when there is no audio: the attribute is the selector the
+   click handler binds on, so an empty one makes a silent card look playable. */}
+<article class="show" data-soundcloud={show.soundcloudSrc || undefined}>
 	<div class="image cover">
 		{show.imageUrl ? <img src={show.imageUrl} alt="" loading="lazy" width="600" height="600" /> : null}
 	</div>

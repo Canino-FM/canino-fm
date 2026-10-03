@@ -60,10 +60,17 @@ const liveEmbedSrc = `https://www.youtube-nocookie.com/embed/live_stream?channel
 {/* Astro hoists component scripts at build time, so this is bundled regardless of the
    branch above. It is a no-op without the mount point a manual embed replaces. */}
 <script>
-	const mount = document.querySelector('.video__live')
-	const src = mount?.getAttribute('data-live-src')
+	/**
+	 * Starts polling for the hero on the current page and returns the function that stops it.
+	 * Navigation is client-side, so this runs once per visit: the check is started for each
+	 * page that has a hero and stopped before that page is swapped out, or the poll would
+	 * outlive it and stack up a new interval on every return to the homepage.
+	 */
+	function startLiveCheck(): (() => void) | undefined {
+		const mount = document.querySelector('.video__live')
+		const src = mount?.getAttribute('data-live-src')
+		if (!mount || !src) return
 
-	if (mount && src) {
 		const liveMount = mount
 		const liveSrc = src
 
@@ -173,14 +180,29 @@ const liveEmbedSrc = `https://www.youtube-nocookie.com/embed/live_stream?channel
 		}
 
 		refresh()
-		setInterval(refresh, POLL_MS)
+		const interval = setInterval(refresh, POLL_MS)
 
 		// Background tabs throttle timers, so a returning visitor can be a full interval
 		// stale — worse on mobile, where the timer may be suspended entirely.
-		document.addEventListener('visibilitychange', () => {
+		function onVisibilityChange() {
 			if (!document.hidden) refresh()
-		})
+		}
+		document.addEventListener('visibilitychange', onVisibilityChange)
+
+		return () => {
+			clearInterval(interval)
+			document.removeEventListener('visibilitychange', onVisibilityChange)
+		}
 	}
+
+	let stopLiveCheck = startLiveCheck()
+	document.addEventListener('astro:before-swap', () => {
+		stopLiveCheck?.()
+		stopLiveCheck = undefined
+	})
+	document.addEventListener('astro:after-swap', () => {
+		stopLiveCheck = startLiveCheck()
+	})
 </script>
 
 <style is:global>
