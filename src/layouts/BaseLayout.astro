@@ -4,13 +4,39 @@ interface Props {
 	description?: string
 	/** Skip the timed header/logo intro; useful while developing. */
 	skipIntro?: boolean
+	/**
+	 * Play the intro only on the first page view of a browsing session. Later views
+	 * (e.g. returning from an artist page) skip it. Ignored when `skipIntro` is set.
+	 */
+	introOncePerSession?: boolean
 }
 
 const {
 	title = 'Canino FM',
 	description = 'Canino FM — independent community radio, Barcelona.',
 	skipIntro = false,
+	introOncePerSession = false,
 } = Astro.props
+
+/** The intro can be skipped before paint, so the anti-flash CSS has to be present. */
+const maySkipIntro = skipIntro || introOncePerSession
+
+/**
+ * Runs synchronously as the first thing in <body>, before the header is parsed, so the
+ * class lands ahead of first paint and the symbol never flashes full-viewport.
+ * Marks the session on the first view, so this page view plays the intro and later ones skip it.
+ */
+const introOnceScript = `(function () {
+	try {
+		if (sessionStorage.getItem('canino:intro-seen')) {
+			document.body.classList.add('skip-intro')
+		} else {
+			sessionStorage.setItem('canino:intro-seen', '1')
+		}
+	} catch (e) {
+		/* Storage unavailable (private mode, blocked cookies): play the intro. */
+	}
+})()`
 ---
 
 <!doctype html>
@@ -19,7 +45,7 @@ const {
 		<meta charset="UTF-8" />
 		<meta name="viewport" content="width=device-width, initial-scale=1.0" />
 		{
-			skipIntro ? (
+			maySkipIntro ? (
 				<style is:inline>
 					/* Before bundled component CSS (notably in dev), avoid a full-viewport symbol flash. */
 					body.skip-intro .header .symbol {
@@ -35,6 +61,8 @@ const {
 							height: calc(59 / 375 * 100vw);
 						}
 						body.skip-intro .header .logo-wrapper {
+							/* Mirrors Header.astro's mobile rule, which is the source of truth. */
+							top: calc(10 / 375 * 100vw);
 							left: calc(50 / 375 * 100vw);
 							height: calc(40 / 375 * 100vw);
 							width: calc(320 / 375 * 100vw);
@@ -54,6 +82,7 @@ const {
 		<title>{title}</title>
 	</head>
 	<body class:list={[{ 'skip-intro': skipIntro }]}>
+		{introOncePerSession && !skipIntro ? <script is:inline set:html={introOnceScript} /> : null}
 		<slot />
 	</body>
 </html>

@@ -34,6 +34,8 @@ const records: SearchRecord[] = [
 		}),
 	),
 ]
+
+const searchIndexJson = JSON.stringify(records).replace(/</g, '\\u003c')
 ---
 
 <div class="search">
@@ -49,7 +51,9 @@ const records: SearchRecord[] = [
 	</div>
 </div>
 
-<script type="application/json" id="search-data" is:inline set:html={JSON.stringify(records)} />
+{/* set:html does not escape, so a "<" in a show title could close this block early and
+   truncate the JSON. < is valid inside a JSON string and parses back to "<". */}
+<script type="application/json" id="search-data" is:inline set:html={searchIndexJson} />
 
 <script>
 	import Fuse from 'fuse.js'
@@ -63,7 +67,14 @@ const records: SearchRecord[] = [
 	}
 
 	const dataEl = document.getElementById('search-data')
-	const records: SearchRecord[] = dataEl?.textContent ? JSON.parse(dataEl.textContent) : []
+	let records: SearchRecord[] = []
+	try {
+		records = dataEl?.textContent ? JSON.parse(dataEl.textContent) : []
+	} catch (error) {
+		// Without this the throw would kill the module before the toggle is bound below,
+		// leaving the Search button a dead no-op with nothing to explain it.
+		console.error('[search] could not read the search index; search will find nothing', error)
+	}
 
 	const fuse = new Fuse(records, {
 		keys: ['title', 'subtitle'],
@@ -130,6 +141,8 @@ const records: SearchRecord[] = [
 
 	document.querySelectorAll('.button--search').forEach((btn) => {
 		function toggleSearch() {
+			// Keep the two overlays mutually exclusive, so closing Search never reveals a stale About.
+			document.body.classList.remove('show-about')
 			document.body.classList.toggle('show-search')
 			if (document.body.classList.contains('show-search')) {
 				input?.focus()

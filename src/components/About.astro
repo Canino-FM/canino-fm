@@ -20,6 +20,26 @@ const contactEmail = settings.contact?.trim() ?? ''
 					<li class="item">{contactEmail}</li>
 				</ul>
 			</div>
+			<div class="block social">
+				<p class="label">Follow</p>
+				<ul class="list">
+					<li class="item">
+						<a href="https://www.youtube.com/@CaninoFM" target="_blank" rel="noopener noreferrer"
+							>YouTube</a
+						>
+					</li>
+					<li class="item">
+						<a href="https://www.instagram.com/canino.fm" target="_blank" rel="noopener noreferrer"
+							>Instagram</a
+						>
+					</li>
+					<li class="item">
+						<a href="https://soundcloud.com/canino-fm" target="_blank" rel="noopener noreferrer"
+							>SoundCloud</a
+						>
+					</li>
+				</ul>
+			</div>
 			<div class="block thanks">
 				<p class="label">Credits</p>
 				<ul class="list">
@@ -30,6 +50,28 @@ const contactEmail = settings.contact?.trim() ?? ''
 		</div>
 	</div>
 </div>
+
+<script>
+	// Lives here rather than on the homepage so the panel works wherever About is rendered.
+	document.querySelectorAll('.button--about').forEach((btn) => {
+		function toggleAbout() {
+			// About sits below Search in the stack, so it would otherwise open invisibly behind it.
+			document.body.classList.remove('show-search')
+			document.body.classList.toggle('show-about')
+		}
+		btn.addEventListener('click', toggleAbout)
+		btn.addEventListener('keydown', (e) => {
+			if (e instanceof KeyboardEvent && (e.key === 'Enter' || e.key === ' ')) {
+				e.preventDefault()
+				toggleAbout()
+			}
+		})
+	})
+
+	document.addEventListener('keydown', (e) => {
+		if (e.key === 'Escape') document.body.classList.remove('show-about')
+	})
+</script>
 
 <style is:global>
 	.about .thanks .item {
