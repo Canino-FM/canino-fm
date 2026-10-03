@@ -4,3 +4,7 @@
 
 [build.environment]
   NODE_VERSION = "24"
+
+# live-status.mjs declares its own route (/api/live-status) via its `config` export.
+[functions]
+  directory = "netlify/functions"

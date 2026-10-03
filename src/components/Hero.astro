@@ -9,6 +9,26 @@ interface Props {
 }
 
 const { program, heroVideoHtml, heroIframeSrc } = Astro.props
+
+/**
+ * Read from the same env var as netlify/functions/live-status.mjs, so the channel that is
+ * checked and the channel that is embedded cannot diverge. Note the asymmetry: this is
+ * resolved at build time and the function resolves it per request, so changing the var
+ * needs a redeploy — otherwise the function would check one channel and the hero embed
+ * another, which renders a dead player with no error anywhere.
+ */
+const YOUTUBE_CHANNEL_ID = process.env.YOUTUBE_CHANNEL_ID || 'UCaR-E0AKLsDDS1Xgl7_DdZQ'
+
+/**
+ * Resolves to whatever is live on the channel at the moment it loads — no video id needed.
+ *
+ * Muted because iOS, and desktop browsers without prior engagement, only allow autoplay
+ * when muted; an unmuted embed would simply load paused. The viewer unmutes in the player.
+ *
+ * playsinline is required for iOS: YouTube defaults it to 0, which takes playback
+ * fullscreen there, so the stream would hijack the screen instead of sitting in the hero.
+ */
+const liveEmbedSrc = `https://www.youtube-nocookie.com/embed/live_stream?channel=${YOUTUBE_CHANNEL_ID}&autoplay=1&mute=1&playsinline=1`
 ---
 
 <section id="program" class="hero">
@@ -26,11 +46,142 @@ const { program, heroVideoHtml, heroIframeSrc } = Astro.props
 					referrerpolicy="strict-origin-when-cross-origin"
 					allowfullscreen
 				/>
-			) : null
+			) : (
+				/* Built offline: the page is static, so live state is resolved in the browser. */
+				<div class="video__live" data-live-src={liveEmbedSrc}>
+					<p class="video__offline">Offline</p>
+				</div>
+			)
 		}
 	</div>
 	<Program program={program} />
 </section>
+
+{/* Astro hoists component scripts at build time, so this is bundled regardless of the
+   branch above. It is a no-op without the mount point a manual embed replaces. */}
+<script>
+	const mount = document.querySelector('.video__live')
+	const src = mount?.getAttribute('data-live-src')
+
+	if (mount && src) {
+		const liveMount = mount
+		const liveSrc = src
+
+		const POLL_MS = 60_000
+		const REQUEST_TIMEOUT_MS = 10_000
+
+		/**
+		 * Tearing a player down destroys its browsing context: the viewer loses whatever they
+		 * did inside it, including unmuting — and the remount is muted again. For a radio
+		 * station that is silence which looks like it is working, so the threshold is
+		 * deliberately generous. The cost is a dead player for up to five minutes after a
+		 * broadcast genuinely ends; the alternative is cutting a listener off mid-show.
+		 */
+		const OFFLINE_READINGS_BEFORE_TEARDOWN = 5
+
+		/**
+		 * An undetermined reading must not tear a stream down, but it must not pin a stale one
+		 * on screen forever either. If the check stays unreachable this long while a player is
+		 * mounted, fall back rather than leave a dead embed up indefinitely.
+		 */
+		const UNKNOWN_READINGS_BEFORE_FALLBACK = 10
+
+		// Mirrors what is in the DOM. Re-running showLive() would replace the iframe and
+		// restart playback, so only transitions touch the DOM — never re-assert a state.
+		// Starts false because the server already rendered the offline card.
+		let showingLive = false
+		let offlineReadings = 0
+		let unknownReadings = 0
+		let inFlight = false
+
+		function showLive() {
+			const iframe = document.createElement('iframe')
+			iframe.src = liveSrc
+			iframe.title = 'Canino FM live'
+			iframe.allow =
+				'accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture; web-share'
+			iframe.referrerPolicy = 'strict-origin-when-cross-origin'
+			iframe.allowFullscreen = true
+			liveMount.replaceChildren(iframe)
+			showingLive = true
+		}
+
+		function showOffline() {
+			const p = document.createElement('p')
+			p.className = 'video__offline'
+			p.textContent = 'Offline'
+			liveMount.replaceChildren(p)
+			showingLive = false
+		}
+
+		/** Returns true, false, or null for "could not tell". Never throws. */
+		async function readStatus(): Promise<boolean | null> {
+			try {
+				const res = await fetch('/api/live-status', {
+					signal: AbortSignal.timeout(REQUEST_TIMEOUT_MS),
+				})
+				if (!res.ok) {
+					// Without this, a function that failed to deploy is completely silent: the
+					// page polls a 404 forever and shows Offline, with nothing logged anywhere.
+					console.warn('[live-status] request failed:', res.status, res.statusText)
+					return null
+				}
+				const payload = await res.json()
+				if (typeof payload?.live === 'boolean') return payload.live
+				console.warn('[live-status] indeterminate:', payload?.reason ?? payload)
+				return null
+			} catch (error) {
+				console.warn('[live-status] unreachable:', error)
+				return null
+			}
+		}
+
+		async function refresh() {
+			// A stalled request landing late could otherwise apply a stale reading over a
+			// newer one, defeating the teardown threshold with a single real negative.
+			if (inFlight) return
+			inFlight = true
+			let live: boolean | null
+			try {
+				live = await readStatus()
+			} finally {
+				inFlight = false
+			}
+
+			if (live === null) {
+				unknownReadings += 1
+				if (showingLive && unknownReadings >= UNKNOWN_READINGS_BEFORE_FALLBACK) {
+					unknownReadings = 0
+					showOffline()
+				}
+				return
+			}
+
+			unknownReadings = 0
+
+			if (live) {
+				offlineReadings = 0
+				if (!showingLive) showLive()
+				return
+			}
+
+			offlineReadings += 1
+			if (showingLive && offlineReadings >= OFFLINE_READINGS_BEFORE_TEARDOWN) {
+				offlineReadings = 0
+				showOffline()
+			}
+		}
+
+		refresh()
+		setInterval(refresh, POLL_MS)
+
+		// Background tabs throttle timers, so a returning visitor can be a full interval
+		// stale — worse on mobile, where the timer may be suspended entirely.
+		document.addEventListener('visibilitychange', () => {
+			if (!document.hidden) refresh()
+		})
+	}
+</script>
 
 <style is:global>
 	.hero {
@@ -78,6 +229,30 @@ const { program, heroVideoHtml, heroIframeSrc } = Astro.props
 		width: 100%;
 		height: calc(540 / 1920 * 100vw);
 		border: 0;
+	}
+
+	/* Same box as the iframe, so swapping live <-> offline never shifts the layout. */
+	.hero .video__live {
+		width: 100%;
+		height: calc(540 / 1920 * 100vw);
+	}
+
+	.hero .video__offline {
+		display: flex;
+		align-items: center;
+		justify-content: center;
+		width: 100%;
+		height: 100%;
+		margin: 0;
+		background: #000;
+		color: #fff;
+		text-transform: uppercase;
+	}
+
+	@media (max-width: 767px) {
+		.hero .video__live {
+			height: calc(213 / 375 * 100vw);
+		}
 	}
 
 	@media (max-width: 767px) {

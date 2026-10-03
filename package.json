@@ -6,7 +6,8 @@
 	"scripts": {
 		"dev": "astro dev",
 		"build": "astro build",
-		"preview": "astro preview"
+		"preview": "astro preview",
+		"test": "node --test 'test/*.test.mjs'"
 	},
 	"dependencies": {
 		"@sanity/astro": "^3.3.1",

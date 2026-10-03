@@ -34,11 +34,21 @@ const events = program.events ?? []
 <style is:global>
 	.program {
 		position: relative;
+		/* A flex child will not shrink below its content, so without this the scroll below
+		   never engages and the overflow still spills. */
+		min-height: 0;
+		/* The hero's height is fixed, so a schedule taller than it would run over the
+		   archive underneath. Four events of seven shows already uses ~91% of the space at
+		   the 1920 design width, and each wrapped title costs another line — so this only
+		   ever appears once the schedule genuinely outgrows the hero. */
+		overflow-y: auto;
 	}
 
 	@media (max-width: 767px) {
 		.program {
 			height: auto;
+			/* The hero is not height-constrained here, so the page scrolls instead. */
+			overflow-y: visible;
 		}
 	}
 
