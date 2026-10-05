@@ -1,51 +1,72 @@
 /**
- * Reports whether the Canino FM YouTube channel is currently live.
+ * Is the Canino FM YouTube channel broadcasting right now?
  *
- * The browser cannot check this itself — youtube.com sends no CORS headers — so the
- * page asks this function instead.
+ * The browser cannot check this itself — googleapis.com sends no CORS headers for an
+ * API key request, and the key must not ship to the client anyway — so this runs here.
  *
- * It deliberately does not use the YouTube Data API: `search.list` costs 100 quota units
- * against a 10,000-unit daily project budget, i.e. 100 calls a day, which a polling page
- * exhausts in minutes. Fetching the channel's /live page costs nothing and needs no key,
- * so nothing secret ships to the browser.
+ * ## Why this replaced a scraper
  *
- * Three outcomes, not two:
+ * The first version fetched the channel's /live page and read YouTube's internal
+ * `ytInitialPlayerResponse` payload. It worked from a developer's machine and never
+ * worked in production: YouTube scores datacenter IP ranges — every Netlify, VPS and CI
+ * host — far below home connections and 302s them to consent.youtube.com. The function
+ * received a consent page whose player payload has no `videoDetails`, so a real
+ * broadcast read as `{"live":null,"reason":"no_video_details"}` for its entire run.
  *
- *   { live: true }                  streaming now
- *   { live: false }                 the page parsed fine and nothing is streaming
- *   { live: null, reason: '…' }     we could not tell
+ * Sending a `CONSENT=YES+1` cookie to step around that interstitial was both fragile and
+ * the wrong thing to do. The Data API authenticates properly and never sees a consent
+ * wall.
  *
- * The third matters. A timeout, a 429 or a consent interstitial served to Netlify's
- * datacenter IPs must not be reported as "offline": the hero would tear down a stream
- * that is actually running, and a cached mistake would do it for every visitor at once.
+ * ## The contract this file exists to keep
  *
- * The critical property is that "the field says not live" and "I could not find the
- * field" are DIFFERENT ANSWERS. An earlier version tested loose substrings against the
- * whole document, so any markup change YouTube shipped would have produced a confident,
- * cached, unlogged "offline" — the same failure as reporting errors as offline, reached
- * by a different route. Everything below parses the player payload as data instead.
+ * Three answers, never two:
+ *
+ *   true   a public, embeddable video on this channel is live right now
+ *   false  both API calls parsed cleanly and nothing on the channel is live
+ *   null   we could not tell — plus a `reason`
+ *
+ * `false` is a claim, not a default. Every failure — missing key, non-2xx, exhausted
+ * quota, unparseable body, missing fields — is `null`. This matters because `false` is
+ * cached at the edge and served to every visitor: a wrong `false` takes the player down
+ * for everyone, during a show, and logs nothing. The feature has broken this way twice.
+ *
+ * ## Known limitation, unverified as of 2026-10-05
+ *
+ * Liveness is read from the channel's uploads playlist. Whether a broadcast reliably
+ * appears there *while it is live* has NOT been confirmed against a real show. Evidence
+ * is mixed: after the 2026-10-04 broadcast, the five VODs carried feed timestamps ~14h
+ * after air, and the first show of the day was still absent the next morning.
+ *
+ * If the playlist turns out to lag, this returns `false` during a live show — the same
+ * user-visible failure as before, from a different cause. `findCandidateIds` is
+ * deliberately the only place that knows where IDs come from, so swapping it for
+ * `liveBroadcasts.list` (authoritative, 1 unit, but OAuth rather than an API key) is a
+ * contained change.
+ *
+ * VERIFY THIS DURING THE NEXT BROADCAST before trusting a `false`.
  */
 
 const CHANNEL_ID = process.env.YOUTUBE_CHANNEL_ID || 'UCaR-E0AKLsDDS1Xgl7_DdZQ'
+const API_KEY = process.env.YOUTUBE_API_KEY
 
 /**
- * Spoofed desktop Chrome: YouTube serves unknown clients a stripped payload without the
- * player response. Worth refreshing occasionally — a stale UA is itself a bot signal.
+ * Every channel's uploads playlist is its channel id with the `UC` prefix swapped for
+ * `UU`. Documented by YouTube and stable; it saves a `channels.list` call per request.
  */
-const USER_AGENT =
-	'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/125 Safari/537.36'
+const UPLOADS_PLAYLIST_ID = `UU${CHANNEL_ID.slice(2)}`
 
-/** Netlify's function limit is 10s; this leaves headroom to still return a response. */
+/** Headroom: a live broadcast should be newest, but a six-show day puts several in flight. */
+const CANDIDATE_COUNT = 10
+
+const API_ROOT = 'https://www.googleapis.com/youtube/v3'
 const UPSTREAM_TIMEOUT_MS = 8000
 
-/** Determinate answers absorb traffic at the edge: YouTube sees ~1 request a minute. */
 const BROWSER_CACHE_SECONDS = 30
 const EDGE_CACHE_SECONDS = 60
 
 /**
- * Undetermined answers get a short TTL rather than `no-store`. Zero would remove the
- * edge's backpressure at exactly the moment upstream is refusing, so a transient 429
- * would be amplified by every visitor into a sustained block.
+ * An undetermined answer is still cached, briefly. `no-store` would remove backpressure
+ * exactly when upstream is refusing — a transient 429 would amplify into a sustained one.
  */
 const UNDETERMINED_EDGE_SECONDS = 10
 
@@ -53,114 +74,104 @@ const UNDETERMINED_EDGE_SECONDS = 10
 const MEMO_MS = 25_000
 
 /**
- * Rendered by the YouTube app shell on any real page, idle or watch. Its absence means a
- * consent wall, a bot check, or markup we no longer understand.
- *
- * The trailing `= ` is load-bearing: it matches the assignment of the data payload. The
- * bare identifier also appears as an argument name inside YouTube's minified bundle, so
- * testing for it alone matches literally every page the shell serves — which is how the
- * previous version's health check passed the interstitials it existed to reject.
+ * Pulls the most recent uploads. Returns `{ ids }` or `{ reason }` — never a bare array,
+ * so "no videos" cannot be mistaken for "nothing live".
  */
-const SHELL_PAYLOAD = 'var ytInitialData = '
+export function readCandidateIds(body) {
+	const items = body?.items
+	if (!Array.isArray(items)) return { reason: 'playlist_shape' }
 
-/** Only a watch page assigns a player response; an idle channel serves the browse page. */
-const PLAYER_PAYLOAD = 'ytInitialPlayerResponse = '
+	const ids = items.map((i) => i?.contentDetails?.videoId).filter((id) => typeof id === 'string')
 
-/**
- * Identifies the browse page positively. Measured: 5 occurrences on an idle channel, 0 on
- * a live one. Without this, "no player payload" would be read as "idle", so renaming the
- * payload marker would make every page look idle — a confident, cached, permanent offline.
- */
-const BROWSE_PAYLOAD = '"tabRenderer"'
+	// The channel has 300+ uploads. An empty page means the response is not what we think
+	// it is, not that Canino has no videos — so it must not read as "nothing is live".
+	if (!ids.length) return { reason: 'no_candidates' }
 
-/**
- * Slices the JSON object that follows `marker` by matching braces, respecting strings and
- * escapes. A non-greedy regex cannot do this: the payload contains `};` inside string
- * values, so it would truncate and the parse would fail on a perfectly healthy page.
- */
-function extractJsonObject(html, marker) {
-	const markerAt = html.indexOf(marker)
-	if (markerAt === -1) return null
-
-	const start = html.indexOf('{', markerAt + marker.length)
-	if (start === -1) return null
-
-	let depth = 0
-	let inString = false
-	let escaped = false
-
-	for (let i = start; i < html.length; i++) {
-		const char = html[i]
-
-		if (escaped) {
-			escaped = false
-			continue
-		}
-		if (char === '\\') {
-			if (inString) escaped = true
-			continue
-		}
-		if (char === '"') {
-			inString = !inString
-			continue
-		}
-		if (inString) continue
-
-		if (char === '{') depth += 1
-		else if (char === '}') {
-			depth -= 1
-			if (depth === 0) return html.slice(start, i + 1)
-		}
-	}
-
-	return null
+	return { ids }
 }
 
-/** Exported for tests: the whole classification, with no network involved. */
-export function classify(html) {
-	if (!html.includes(SHELL_PAYLOAD)) {
-		return { live: null, reason: 'unrecognised_page', bytes: html.length }
+/**
+ * Decides liveness from a `videos.list` body.
+ *
+ * `liveBroadcastContent` is the documented field and carries `live`, `upcoming` or
+ * `none` — so a scheduled broadcast's waiting room is excluded here rather than needing
+ * the separate `isUpcoming` guard the scraper version got wrong.
+ *
+ * `embeddable` and `privacyStatus` replace the old `playabilityStatus` check: a
+ * members-only, private or non-embeddable stream is live for YouTube but would mount a
+ * dead error panel in our hero, which is worse than showing Offline.
+ */
+export function classifyVideos(body) {
+	const items = body?.items
+	if (!Array.isArray(items)) return { live: null, reason: 'videos_shape' }
+
+	for (const item of items) {
+		if (item?.snippet?.liveBroadcastContent !== 'live') continue
+		if (item?.status?.embeddable !== true) continue
+		if (item?.status?.privacyStatus !== 'public') continue
+		return { live: true }
 	}
 
-	const raw = extractJsonObject(html, PLAYER_PAYLOAD)
-	if (!raw) {
-		// Only call it idle if the page says so. Inferring idle from a missing player payload
-		// would turn any rename of that marker into a permanent, confident "offline".
-		if (html.includes(BROWSE_PAYLOAD)) return { live: false }
-		return { live: null, reason: 'neither_watch_nor_browse', bytes: html.length }
-	}
+	return { live: false }
+}
 
-	let player
+/**
+ * Maps a Google API error body to a reason. Quota exhaustion is called out because it is
+ * the one failure that is both likely and self-inflicted, and it looks identical to a
+ * generic 403 in a log otherwise.
+ */
+export function errorReason(status, body) {
+	const reason = body?.error?.errors?.[0]?.reason
+	if (reason === 'quotaExceeded' || reason === 'dailyLimitExceeded') return 'quota_exceeded'
+	if (reason === 'keyInvalid' || reason === 'ipRefererBlocked') return 'key_rejected'
+	return `upstream_${status}`
+}
+
+/** Returns a parsed body, or throws with a reason this file knows how to report. */
+async function getJson(url) {
+	const res = await fetch(url, { signal: AbortSignal.timeout(UPSTREAM_TIMEOUT_MS) })
+
+	let body = null
 	try {
-		player = JSON.parse(raw)
+		body = await res.json()
 	} catch {
-		return { live: null, reason: 'unparseable_player', bytes: raw.length }
+		// A non-2xx with an unreadable body is still a known-shaped failure; report the
+		// status rather than the parse error, which would hide why it failed.
+		if (!res.ok) throw Object.assign(new Error('upstream'), { reason: `upstream_${res.status}` })
+		throw Object.assign(new Error('unparseable'), { reason: 'unparseable_body' })
 	}
 
-	const details = player?.videoDetails
-	if (!details) return { live: null, reason: 'no_video_details' }
+	if (!res.ok) throw Object.assign(new Error('upstream'), { reason: errorReason(res.status, body) })
+	return body
+}
 
-	// A members-only, geo-blocked or still-processing stream can report isLive while being
-	// unplayable; mounting the embed for one shows a YouTube error panel, not a broadcast.
-	const playable = player?.playabilityStatus?.status === 'OK'
-
-	return { live: details.isLive === true && details.isUpcoming !== true && playable }
+/**
+ * The only place that knows where candidate video IDs come from. See the limitation note
+ * at the top of this file: if the uploads playlist proves to lag live broadcasts, this
+ * function is what gets replaced.
+ */
+async function findCandidateIds() {
+	const url =
+		`${API_ROOT}/playlistItems?part=contentDetails` +
+		`&playlistId=${encodeURIComponent(UPLOADS_PLAYLIST_ID)}` +
+		`&maxResults=${CANDIDATE_COUNT}&key=${encodeURIComponent(API_KEY)}`
+	return readCandidateIds(await getJson(url))
 }
 
 async function readLiveStatus() {
-	const res = await fetch(`https://www.youtube.com/channel/${CHANNEL_ID}/live`, {
-		headers: {
-			'user-agent': USER_AGENT,
-			'accept-language': 'en',
-			// Skips the EU consent interstitial, which otherwise replaces the player payload.
-			cookie: 'CONSENT=YES+1',
-		},
-		signal: AbortSignal.timeout(UPSTREAM_TIMEOUT_MS),
-	})
+	// Without a key every request would 400. Reporting that as `false` would show Offline
+	// through an entire broadcast with nothing to explain it — the exact failure this
+	// rewrite exists to end.
+	if (!API_KEY) return { live: null, reason: 'no_api_key' }
 
-	if (!res.ok) return { live: null, reason: 'upstream_error', status: res.status }
+	const candidates = await findCandidateIds()
+	if (candidates.reason) return { live: null, reason: candidates.reason }
 
-	return classify(await res.text())
+	const url =
+		`${API_ROOT}/videos?part=snippet,status` +
+		`&id=${candidates.ids.map(encodeURIComponent).join(',')}` +
+		`&key=${encodeURIComponent(API_KEY)}`
+	return classifyVideos(await getJson(url))
 }
 
 let memo = null
@@ -176,7 +187,7 @@ async function currentStatus() {
 		const timedOut = error?.name === 'TimeoutError' || error?.cause?.name === 'TimeoutError'
 		payload = {
 			live: null,
-			reason: timedOut ? 'timeout' : 'fetch_failed',
+			reason: error?.reason || (timedOut ? 'timeout' : 'fetch_failed'),
 			// node's fetch puts the real cause (ENOTFOUND, ECONNRESET, …) on error.cause.
 			detail: error?.cause?.code || error?.cause?.message || error?.message || String(error),
 		}
@@ -202,12 +213,19 @@ export default async function handler(req) {
 		console.log('live-status', CHANNEL_ID, '→', JSON.stringify(payload))
 	}
 
+	const ttl = determinate ? EDGE_CACHE_SECONDS : UNDETERMINED_EDGE_SECONDS
+
 	return new Response(JSON.stringify(payload), {
 		headers: {
 			'content-type': 'application/json; charset=utf-8',
-			'cache-control': determinate
-				? `public, max-age=${BROWSER_CACHE_SECONDS}, s-maxage=${EDGE_CACHE_SECONDS}`
-				: `public, max-age=0, s-maxage=${UNDETERMINED_EDGE_SECONDS}`,
+			'cache-control': `public, max-age=${determinate ? BROWSER_CACHE_SECONDS : 0}`,
+			/**
+			 * Netlify's edge cache is per-region, so without `durable` each region invokes
+			 * the function separately and quota cost multiplies by the number of regions
+			 * serving traffic. `durable` makes them share one entry: roughly 2,880 units a
+			 * day against the 10,000 default, rather than that figure per region.
+			 */
+			'netlify-cdn-cache-control': `public, durable, max-age=${ttl}`,
 		},
 	})
 }
