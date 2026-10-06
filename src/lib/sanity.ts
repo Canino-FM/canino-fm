@@ -103,9 +103,10 @@ const artistsQuery = `*[_type == "artist"] {
 
 export async function fetchHomePageData() {
 	const projectId = import.meta.env.SANITY_PROJECT_ID
-	if (!projectId?.trim()) {
+	const token = import.meta.env.SANITY_API_READ_TOKEN
+	if (!projectId?.trim() || !token?.trim()) {
 		throw new Error(
-			'Missing SANITY_PROJECT_ID. Add a root `.env` with that variable (see README).',
+			'Missing SANITY_PROJECT_ID or SANITY_API_READ_TOKEN. Add a root `.env` with those variables (see README).',
 		)
 	}
 

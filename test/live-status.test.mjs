@@ -1,121 +1,146 @@
 /**
- * The contract under test is narrow and was broken twice in production:
+ * Pins the safety contract of the live check: a failed or unrecognised check must report
+ * `null`, never `false`, and must never be cached as though it were an answer.
  *
- *   `false` means "we asked YouTube and nothing is live". It must never be what a
- *   failure degrades into, because `false` is cached at the edge and served to every
- *   visitor — a wrong one takes the player down for a whole broadcast and logs nothing.
+ * This exists because the feature has already produced that bug twice, in two different
+ * shapes — once by mapping every error to `{live:false}` and caching it, and once by
+ * matching loose substrings so that any markup change read as "offline". Both would have
+ * taken a live broadcast off the site for every visitor at once, with nothing in the logs.
  *
- * So most of these assert the shape of a *failure*, not of success. They import the real
- * module rather than restating its logic: an earlier ad-hoc check mirrored the
- * implementation instead of exercising it, and would have stayed green if the feature
- * were deleted outright.
+ * Run with `pnpm test`. No framework, no network: node:test and a stubbed fetch.
  */
+
 import { test } from 'node:test'
 import assert from 'node:assert/strict'
+import { classify } from '../netlify/functions/live-status.mjs'
 
-import { readCandidateIds, classifyVideos, errorReason } from '../netlify/functions/live-status.mjs'
+/** Minimal stand-ins for the two page shapes YouTube actually serves on /channel/<id>/live. */
+const watchPage = (videoDetails, playability = 'OK') =>
+	`<html><script>var ytInitialData = {"x":1};</script>` +
+	`<script>var ytInitialPlayerResponse = {"playabilityStatus":{"status":"${playability}"},` +
+	`"videoDetails":${JSON.stringify(videoDetails)}};</script></html>`
 
-const playlistPage = (...ids) => ({
-	kind: 'youtube#playlistItemListResponse',
-	items: ids.map((id) => ({ kind: 'youtube#playlistItem', contentDetails: { videoId: id } })),
+const browsePage = () => `<html><script>var ytInitialData = {"contents":[{"tabRenderer":{}}]};</script></html>`
+
+// --- classification -------------------------------------------------------------------
+
+test('a live watch page is live', () => {
+	assert.deepEqual(classify(watchPage({ isLive: true })), { live: true })
 })
 
-const video = ({ id = 'vid', state = 'none', embeddable = true, privacy = 'public' } = {}) => ({
-	kind: 'youtube#video',
-	id,
-	snippet: { liveBroadcastContent: state },
-	status: { embeddable, privacyStatus: privacy },
+test('an idle channel serves the browse page and is not live', () => {
+	assert.deepEqual(classify(browsePage()), { live: false })
 })
 
-// --- readCandidateIds -------------------------------------------------------
-
-test('reads video ids from an uploads page', () => {
-	assert.deepEqual(readCandidateIds(playlistPage('aaa', 'bbb')), { ids: ['aaa', 'bbb'] })
+test('a scheduled waiting room is not a broadcast', () => {
+	assert.deepEqual(classify(watchPage({ isLive: true, isUpcoming: true })), { live: false })
 })
 
-test('a body with no items is a shape failure, not an empty channel', () => {
-	assert.deepEqual(readCandidateIds({}), { reason: 'playlist_shape' })
-	assert.deepEqual(readCandidateIds(null), { reason: 'playlist_shape' })
-	assert.deepEqual(readCandidateIds({ items: 'nope' }), { reason: 'playlist_shape' })
+test('an unplayable stream is not offered to the hero', () => {
+	// Members-only or geo-blocked: isLive is true but mounting the embed shows an error panel.
+	assert.deepEqual(classify(watchPage({ isLive: true }, 'LOGIN_REQUIRED')), { live: false })
 })
 
-test('an empty page is reported, never treated as "nothing is live"', () => {
-	// The channel has 300+ uploads, so zero items means the response is not what we think
-	// it is. Letting this fall through would show Offline for an entire show.
-	assert.deepEqual(readCandidateIds(playlistPage()), { reason: 'no_candidates' })
+test('a consent wall or bot check is undetermined, never offline', () => {
+	const result = classify('<html>Before you continue to YouTube</html>')
+	assert.equal(result.live, null)
+	assert.equal(result.reason, 'unrecognised_page')
 })
 
-test('items without a videoId are skipped, and all-missing is a failure', () => {
-	const mixed = { items: [{ contentDetails: {} }, { contentDetails: { videoId: 'ok' } }] }
-	assert.deepEqual(readCandidateIds(mixed), { ids: ['ok'] })
-	assert.deepEqual(readCandidateIds({ items: [{}, { contentDetails: {} }] }), {
-		reason: 'no_candidates',
-	})
+test('a corrupted player payload is undetermined, never offline', () => {
+	const broken = watchPage({ isLive: true }).replace('"videoDetails"', '"videoDetails"}}}{')
+	assert.equal(classify(broken).live, null)
 })
 
-// --- classifyVideos ---------------------------------------------------------
-
-test('a live, public, embeddable video is live', () => {
-	assert.deepEqual(classifyVideos({ items: [video({ state: 'live' })] }), { live: true })
+test('a page that is neither watch nor browse is undetermined, never offline', () => {
+	// If YouTube renames the player payload marker, every page would otherwise look idle.
+	const renamed = watchPage({ isLive: true }).replace('ytInitialPlayerResponse = ', 'ytRenamed = ')
+	assert.equal(classify(renamed).live, null)
+	assert.equal(classify(renamed).reason, 'neither_watch_nor_browse')
 })
 
-test('finds the live one among recent uploads', () => {
-	const body = { items: [video(), video(), video({ id: 'x', state: 'live' }), video()] }
-	assert.deepEqual(classifyVideos(body), { live: true })
+test('the payload is sliced by brace matching, not a lazy regex', () => {
+	// A "};" inside a string value would truncate a non-greedy regex and fail the parse.
+	const tricky = watchPage({ isLive: true, title: 'a show with }; inside its title' })
+	assert.deepEqual(classify(tricky), { live: true })
 })
 
-test('nothing live is a genuine false', () => {
-	assert.deepEqual(classifyVideos({ items: [video(), video()] }), { live: false })
-})
+// --- handler: the cache contract ------------------------------------------------------
 
-test('a scheduled waiting room is not live', () => {
-	// The scraper version mounted a player over the countdown. `liveBroadcastContent`
-	// distinguishes these natively, which is why the old isUpcoming guard is gone.
-	assert.deepEqual(classifyVideos({ items: [video({ state: 'upcoming' })] }), { live: false })
-})
-
-test('a live stream we cannot embed does not count', () => {
-	// It would mount a dead error panel in the hero — worse than showing Offline.
-	assert.deepEqual(classifyVideos({ items: [video({ state: 'live', embeddable: false })] }), {
-		live: false,
-	})
-})
-
-test('a live stream that is not public does not count', () => {
-	for (const privacy of ['private', 'unlisted']) {
-		assert.deepEqual(classifyVideos({ items: [video({ state: 'live', privacy })] }), {
-			live: false,
-		})
+const withFetch = async (impl, run) => {
+	const original = globalThis.fetch
+	globalThis.fetch = impl
+	try {
+		await run()
+	} finally {
+		globalThis.fetch = original
 	}
-})
+}
 
-test('a malformed videos body is undetermined, not offline', () => {
-	assert.deepEqual(classifyVideos({}), { live: null, reason: 'videos_shape' })
-	assert.deepEqual(classifyVideos(null), { live: null, reason: 'videos_shape' })
-})
+/** The handler memoises for 25s, so each case needs a distinct channel to bypass it. */
+const freshHandler = async () => {
+	const mod = await import(`../netlify/functions/live-status.mjs?t=${Math.random()}`)
+	return mod.default
+}
 
-test('a video missing status or snippet is skipped rather than trusted', () => {
-	const body = { items: [{ snippet: { liveBroadcastContent: 'live' } }, { status: {} }] }
-	assert.deepEqual(classifyVideos(body), { live: false })
-})
-
-// --- errorReason ------------------------------------------------------------
-
-test('exhausted quota is named, not folded into a generic 403', () => {
-	const body = {
-		error: {
-			code: 403,
-			errors: [{ reason: 'quotaExceeded', message: 'The request cannot be completed.' }],
+test('a determinate answer is edge-cacheable', async () => {
+	await withFetch(
+		async () => new Response(watchPage({ isLive: true }), { status: 200 }),
+		async () => {
+			const fresh = await freshHandler()
+			const res = await fresh({ method: 'GET' })
+			assert.deepEqual(JSON.parse(await res.text()), { live: true })
+			assert.match(res.headers.get('cache-control'), /s-maxage=60/)
 		},
-	}
-	assert.equal(errorReason(403, body), 'quota_exceeded')
+	)
 })
 
-test('a rejected key is named', () => {
-	assert.equal(errorReason(400, { error: { errors: [{ reason: 'keyInvalid' }] } }), 'key_rejected')
+test('an upstream error is undetermined and only briefly cached', async () => {
+	await withFetch(
+		async () => new Response('rate limited', { status: 429 }),
+		async () => {
+			const fresh = await freshHandler()
+			const res = await fresh({ method: 'GET' })
+			const body = JSON.parse(await res.text())
+			assert.equal(body.live, null, 'an upstream error must never read as offline')
+			assert.equal(body.status, 429)
+			// Short, not zero: no-store would remove backpressure exactly during a 429 storm.
+			assert.match(res.headers.get('cache-control'), /s-maxage=10/)
+		},
+	)
 })
 
-test('an unrecognised error keeps its status', () => {
-	assert.equal(errorReason(500, {}), 'upstream_500')
-	assert.equal(errorReason(503, null), 'upstream_503')
+test('a network failure is undetermined and keeps its cause', async () => {
+	await withFetch(
+		async () => {
+			throw Object.assign(new TypeError('fetch failed'), { cause: { code: 'ECONNRESET' } })
+		},
+		async () => {
+			const fresh = await freshHandler()
+			const res = await fresh({ method: 'GET' })
+			const body = JSON.parse(await res.text())
+			assert.equal(body.live, null)
+			assert.equal(body.reason, 'fetch_failed')
+			assert.equal(body.detail, 'ECONNRESET', 'the cause is the only diagnostic there is')
+		},
+	)
+})
+
+test('a timeout is reported as a timeout, not a generic failure', async () => {
+	await withFetch(
+		async () => {
+			throw Object.assign(new Error('aborted'), { name: 'TimeoutError' })
+		},
+		async () => {
+			const fresh = await freshHandler()
+			const res = await fresh({ method: 'GET' })
+			assert.equal(JSON.parse(await res.text()).reason, 'timeout')
+		},
+	)
+})
+
+test('non-GET is rejected', async () => {
+	const fresh = await freshHandler()
+	const res = await fresh({ method: 'POST' })
+	assert.equal(res.status, 405)
 })
