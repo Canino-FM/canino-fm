@@ -30,24 +30,18 @@
  * cached at the edge and served to every visitor: a wrong `false` takes the player down
  * for everyone, during a show, and logs nothing. The feature has broken this way twice.
  *
- * ## Known limitation, unverified as of 2026-10-05
+ * ## Where liveness is read from
  *
- * Liveness is read from the channel's uploads playlist. Whether a broadcast reliably
- * appears there *while it is live* has NOT been confirmed against a real show.
+ * The channel's uploads playlist. That a broadcast appears there *while it is live* was
+ * the one unverified assumption in this design, and it was confirmed against a real
+ * broadcast on 2026-10-06: the stream was at the top of the playlist carrying
+ * `liveBroadcastContent: "live"` within seconds of starting.
  *
- * What is known: the 2026-10-04 broadcasts are in the playlist with full
- * `liveStreamingDetails`, and their `publishedAt` is ~12h after `actualEndTime` — that
- * is VOD-processing time and says nothing about playlist membership during the show.
- * Those broadcasts also carry a `scheduledStartTime`, so the video object exists before
- * air and may already be listed as `upcoming`, which would simply flip to `live`.
- *
- * If the playlist turns out to lag, this returns `false` during a live show — the same
- * user-visible failure as before, from a different cause. `findCandidateIds` is
- * deliberately the only place that knows where IDs come from, so swapping it for
- * `liveBroadcasts.list` (authoritative, 1 unit, but OAuth rather than an API key) is a
- * contained change.
- *
- * VERIFY THIS DURING THE NEXT BROADCAST before trusting a `false`.
+ * Were that ever to change, this would return `false` during a live show — the same
+ * user-visible failure the scraper had, from a different cause. `findCandidateIds` is
+ * deliberately the only place that knows where ids come from, so swapping it for
+ * `liveBroadcasts.list` (authoritative, 1 unit, but OAuth rather than an API key)
+ * remains a contained change.
  */
 
 const CHANNEL_ID = process.env.YOUTUBE_CHANNEL_ID || 'UCaR-E0AKLsDDS1Xgl7_DdZQ'
