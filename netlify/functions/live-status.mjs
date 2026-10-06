@@ -33,9 +33,13 @@
  * ## Known limitation, unverified as of 2026-10-05
  *
  * Liveness is read from the channel's uploads playlist. Whether a broadcast reliably
- * appears there *while it is live* has NOT been confirmed against a real show. Evidence
- * is thin: after the 2026-10-04 broadcast the VODs carried feed timestamps ~14h after
- * air, but that may be VOD-processing time rather than when the entry appeared.
+ * appears there *while it is live* has NOT been confirmed against a real show.
+ *
+ * What is known: the 2026-10-04 broadcasts are in the playlist with full
+ * `liveStreamingDetails`, and their `publishedAt` is ~12h after `actualEndTime` — that
+ * is VOD-processing time and says nothing about playlist membership during the show.
+ * Those broadcasts also carry a `scheduledStartTime`, so the video object exists before
+ * air and may already be listed as `upcoming`, which would simply flip to `live`.
  *
  * If the playlist turns out to lag, this returns `false` during a live show — the same
  * user-visible failure as before, from a different cause. `findCandidateIds` is
