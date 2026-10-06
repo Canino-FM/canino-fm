@@ -34,8 +34,8 @@
  *
  * Liveness is read from the channel's uploads playlist. Whether a broadcast reliably
  * appears there *while it is live* has NOT been confirmed against a real show. Evidence
- * is mixed: after the 2026-10-04 broadcast, the five VODs carried feed timestamps ~14h
- * after air, and the first show of the day was still absent the next morning.
+ * is thin: after the 2026-10-04 broadcast the VODs carried feed timestamps ~14h after
+ * air, but that may be VOD-processing time rather than when the entry appeared.
  *
  * If the playlist turns out to lag, this returns `false` during a live show — the same
  * user-visible failure as before, from a different cause. `findCandidateIds` is
