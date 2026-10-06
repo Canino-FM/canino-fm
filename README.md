@@ -76,6 +76,8 @@ See Astro’s **[Using environment variables](https://docs.astro.build/en/guides
 | `SANITY_PROJECT_ID` | Sanity project ID (from the Sanity dashboard or `cms/sanity.config.ts`). |
 | `SANITY_API_READ_TOKEN` | Read-only API token (Viewer) so the build can run GROQ queries. |
 | `SANITY_DATASET` | Dataset name (e.g. `production` or `stage`). Optional in `.env`; defaults to `production` in the Sanity integration config if unset. |
+| `YOUTUBE_API_KEY` | YouTube Data API v3 key, used by `netlify/functions/live-status.mjs` to check whether the station is broadcasting. **Server-side only** — on Netlify it must be scoped to Functions. Without it the hero shows Offline permanently. Restrict the key to the YouTube Data API; do **not** add an HTTP-referrer restriction, which a server call can never satisfy. |
+| `YOUTUBE_CHANNEL_ID` | Optional. Overrides the Canino FM channel. Must be visible to **both** the build and Functions — the hero embeds it at build time and the function checks it per request, so a variable scoped to only one of them means checking one channel and embedding another. |
 
 See **"Account and service setup"** in `docs/PLAN.md` for creating the Sanity project and tokens and connecting Netlify.
 
