@@ -20,7 +20,10 @@ const { program, heroVideoHtml, heroIframeSrc } = Astro.props
 const YOUTUBE_CHANNEL_ID = process.env.YOUTUBE_CHANNEL_ID || 'UCaR-E0AKLsDDS1Xgl7_DdZQ'
 
 /**
- * Resolves to whatever is live on the channel at the moment it loads — no video id needed.
+ * Fallback only. `embed/live_stream?channel=` asks YouTube to resolve the channel's live
+ * stream itself, and on 2026-10-11 it rendered "This video is unavailable" during a real
+ * broadcast while `embed/<id>` of the same stream played. The page embeds the id that
+ * /api/live-status returns; this is used only if a response lacks one.
  *
  * Muted because iOS, and desktop browsers without prior engagement, only allow autoplay
  * when muted; an unmuted embed would simply load paused. The viewer unmutes in the player.
@@ -28,7 +31,8 @@ const YOUTUBE_CHANNEL_ID = process.env.YOUTUBE_CHANNEL_ID || 'UCaR-E0AKLsDDS1Xgl
  * playsinline is required for iOS: YouTube defaults it to 0, which takes playback
  * fullscreen there, so the stream would hijack the screen instead of sitting in the hero.
  */
-const liveEmbedSrc = `https://www.youtube-nocookie.com/embed/live_stream?channel=${YOUTUBE_CHANNEL_ID}&autoplay=1&mute=1&playsinline=1`
+const playerParams = 'autoplay=1&mute=1&playsinline=1'
+const liveEmbedSrc = `https://www.youtube-nocookie.com/embed/live_stream?channel=${YOUTUBE_CHANNEL_ID}&${playerParams}`
 ---
 
 <section id="program" class="hero">
@@ -48,7 +52,7 @@ const liveEmbedSrc = `https://www.youtube-nocookie.com/embed/live_stream?channel
 				/>
 			) : (
 				/* Built offline: the page is static, so live state is resolved in the browser. */
-				<div class="video__live" data-live-src={liveEmbedSrc}>
+				<div class="video__live" data-live-src={liveEmbedSrc} data-embed-base="https://www.youtube-nocookie.com/embed/" data-player-params={playerParams}>
 					<p class="video__offline">Offline</p>
 				</div>
 			)
@@ -72,7 +76,9 @@ const liveEmbedSrc = `https://www.youtube-nocookie.com/embed/live_stream?channel
 		if (!mount || !src) return
 
 		const liveMount = mount
-		const liveSrc = src
+		const fallbackSrc = src
+		const embedBase = mount.getAttribute('data-embed-base') ?? ''
+		const playerParams = mount.getAttribute('data-player-params') ?? ''
 
 		const POLL_MS = 60_000
 		const REQUEST_TIMEOUT_MS = 10_000
@@ -97,13 +103,16 @@ const liveEmbedSrc = `https://www.youtube-nocookie.com/embed/live_stream?channel
 		// restart playback, so only transitions touch the DOM — never re-assert a state.
 		// Starts false because the server already rendered the offline card.
 		let showingLive = false
+		/** The video in the iframe. Shows are separate broadcasts, so this changes hourly. */
+		let shownVideoId: string | null = null
 		let offlineReadings = 0
 		let unknownReadings = 0
 		let inFlight = false
 
-		function showLive() {
+		function showLive(videoId: string | null) {
 			const iframe = document.createElement('iframe')
-			iframe.src = liveSrc
+			iframe.src = videoId ? `${embedBase}${videoId}?${playerParams}` : fallbackSrc
+			shownVideoId = videoId
 			iframe.title = 'Canino FM live'
 			iframe.allow =
 				'accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture; web-share'
@@ -119,10 +128,16 @@ const liveEmbedSrc = `https://www.youtube-nocookie.com/embed/live_stream?channel
 			p.textContent = 'Offline'
 			liveMount.replaceChildren(p)
 			showingLive = false
+			shownVideoId = null
 		}
 
-		/** Returns true, false, or null for "could not tell". Never throws. */
-		async function readStatus(): Promise<boolean | null> {
+		interface Status {
+			live: boolean | null
+			videoId: string | null
+		}
+
+		/** `live` is true, false, or null for "could not tell". Never throws. */
+		async function readStatus(): Promise<Status> {
 			try {
 				const res = await fetch('/api/live-status', {
 					signal: AbortSignal.timeout(REQUEST_TIMEOUT_MS),
@@ -131,15 +146,18 @@ const liveEmbedSrc = `https://www.youtube-nocookie.com/embed/live_stream?channel
 					// Without this, a function that failed to deploy is completely silent: the
 					// page polls a 404 forever and shows Offline, with nothing logged anywhere.
 					console.warn('[live-status] request failed:', res.status, res.statusText)
-					return null
+					return { live: null, videoId: null }
 				}
 				const payload = await res.json()
-				if (typeof payload?.live === 'boolean') return payload.live
+				if (typeof payload?.live === 'boolean') {
+					const id = typeof payload.videoId === 'string' ? payload.videoId : null
+					return { live: payload.live, videoId: id }
+				}
 				console.warn('[live-status] indeterminate:', payload?.reason ?? payload)
-				return null
+				return { live: null, videoId: null }
 			} catch (error) {
 				console.warn('[live-status] unreachable:', error)
-				return null
+				return { live: null, videoId: null }
 			}
 		}
 
@@ -149,8 +167,9 @@ const liveEmbedSrc = `https://www.youtube-nocookie.com/embed/live_stream?channel
 			if (inFlight) return
 			inFlight = true
 			let live: boolean | null
+			let videoId: string | null = null
 			try {
-				live = await readStatus()
+				;({ live, videoId } = await readStatus())
 			} finally {
 				inFlight = false
 			}
@@ -168,7 +187,8 @@ const liveEmbedSrc = `https://www.youtube-nocookie.com/embed/live_stream?channel
 
 			if (live) {
 				offlineReadings = 0
-				if (!showingLive) showLive()
+				// A new id is the next show: remount, or the viewer is left on a finished one.
+				if (!showingLive || videoId !== shownVideoId) showLive(videoId)
 				return
 			}
 

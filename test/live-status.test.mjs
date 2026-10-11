@@ -19,7 +19,8 @@ import { readCandidateIds, classifyVideos, errorReason } from '../netlify/functi
 
 const playlistPage = (...ids) => ({ items: ids.map((id) => ({ contentDetails: { videoId: id } })) })
 
-const video = ({ state = 'none', embeddable = true, privacy = 'public' } = {}) => ({
+const video = ({ state = 'none', embeddable = true, privacy = 'public', id = 'aaaaaaaaaaa' } = {}) => ({
+	id,
 	snippet: { liveBroadcastContent: state },
 	status: { embeddable, privacyStatus: privacy },
 })
@@ -51,12 +52,25 @@ test('items without a usable videoId are skipped, and all-missing is a failure',
 // --- classifyVideos ---------------------------------------------------------
 
 test('a live, public, embeddable video is live', () => {
-	assert.deepEqual(classifyVideos({ items: [video({ state: 'live' })] }), { live: true })
+	assert.deepEqual(classifyVideos({ items: [video({ state: 'live' })] }), {
+		live: true,
+		videoId: 'aaaaaaaaaaa',
+	})
 })
 
 test('finds the live one among recent uploads', () => {
-	const body = { items: [video(), video(), video({ state: 'live' }), video()] }
-	assert.deepEqual(classifyVideos(body), { live: true })
+	const body = { items: [video(), video(), video({ state: 'live', id: 'liveLiveLiv' }), video()] }
+	assert.deepEqual(classifyVideos(body), { live: true, videoId: 'liveLiveLiv' })
+})
+
+test('a live video whose id we cannot use is undetermined, never offline', () => {
+	for (const id of [null, '', 'short', 'has space!!', 'x'.repeat(40)]) {
+		const item = { ...video({ state: 'live' }), id }
+		assert.deepEqual(classifyVideos({ items: [item] }), {
+			live: null,
+			reason: 'shape_video_item',
+		})
+	}
 })
 
 test('nothing live is a genuine false', () => {
@@ -171,7 +185,7 @@ const json = (body, status = 200) =>
 
 const livePlaylist = { items: [{ contentDetails: { videoId: 'vid1' } }] }
 const liveVideos = {
-	items: [{ snippet: { liveBroadcastContent: 'live' }, status: { embeddable: true, privacyStatus: 'public' } }],
+	items: [{ id: 'vid1vid1vid', snippet: { liveBroadcastContent: 'live' }, status: { embeddable: true, privacyStatus: 'public' } }],
 }
 
 const read = async (res) => JSON.parse(await res.text())
@@ -185,7 +199,7 @@ test('a live broadcast is reported live, from two calls in order', async () => {
 		},
 		async (calls) => {
 			const res = await (await freshHandler())({ method: 'GET' })
-			assert.deepEqual(await read(res), { live: true })
+			assert.deepEqual(await read(res), { live: true, videoId: 'vid1vid1vid' })
 			assert.match(calls[0], /playlistItems\?part=contentDetails/)
 			assert.match(calls[0], /playlistId=UUaR-E0AKLsDDS1Xgl7_DdZQ/, 'uploads playlist, not the channel id')
 			assert.match(calls[1], /videos\?part=snippet,status&id=vid1/)
@@ -276,7 +290,7 @@ test('concurrent requests collapse into one pair of API calls', async () => {
 		async (calls) => {
 			const handler = await freshHandler()
 			const results = await Promise.all([1, 2, 3, 4, 5].map(() => handler({ method: 'GET' })))
-			for (const res of results) assert.deepEqual(await read(res), { live: true })
+			for (const res of results) assert.deepEqual(await read(res), { live: true, videoId: 'vid1vid1vid' })
 			assert.equal(calls.length, 2, 'five requests, one upstream round trip')
 		},
 	)

@@ -15,7 +15,8 @@
  *
  * Three answers, never two:
  *
- *   true   a public, embeddable video on the channel is live right now
+ *   true   a public, embeddable video on the channel is live right now; the payload
+ *          carries its `videoId`, which is what the page embeds (see below)
  *   false  both calls parsed cleanly and none of the CANDIDATE_COUNT newest uploads
  *          is a public embeddable live stream
  *   null   we could not tell — plus a `reason`, and a `detail` on the throw path
@@ -95,6 +96,9 @@ const STUCK_EDGE_SECONDS = 600
 /** Guards upstream even when the CDN is bypassed (a query string changes the cache key). */
 const MEMO_MS = 25_000
 
+/** Shape of a YouTube video id; it is interpolated into an embed URL, so it is checked. */
+const VIDEO_ID = /^[A-Za-z0-9_-]{11}$/
+
 /**
  * Reads candidate video ids out of a `playlistItems.list` body.
  *
@@ -143,6 +147,7 @@ export function classifyVideos(body) {
 		const state = item?.snippet?.liveBroadcastContent
 		const embeddable = item?.status?.embeddable
 		const privacy = item?.status?.privacyStatus
+		const id = item?.id
 
 		if (typeof state !== 'string') return { live: null, reason: 'shape_video_item' }
 		if (typeof embeddable !== 'boolean' || typeof privacy !== 'string') {
@@ -156,7 +161,14 @@ export function classifyVideos(body) {
 		// Present and negative: a real answer, just not one we can play.
 		if (!embeddable || privacy !== 'public') continue
 
-		return { live: true }
+		// The page embeds this exact video. `embed/live_stream?channel=` was tried first and
+		// rendered "This video is unavailable" during a real broadcast on 2026-10-11, while
+		// `embed/<id>` of the same stream played. A live item we cannot name is unreadable,
+		// not offline.
+		if (typeof id !== 'string' || !VIDEO_ID.test(id)) {
+			return { live: null, reason: 'shape_video_item' }
+		}
+		return { live: true, videoId: id }
 	}
 
 	return { live: false }
