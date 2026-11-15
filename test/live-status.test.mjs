@@ -184,6 +184,22 @@ const json = (body, status = 200) =>
 	new Response(JSON.stringify(body), { status, headers: { 'content-type': 'application/json' } })
 
 const livePlaylist = { items: [{ contentDetails: { videoId: 'vid1' } }] }
+const idleVideos = {
+	items: [{ id: 'vid1', snippet: { liveBroadcastContent: 'none' }, status: { embeddable: true, privacyStatus: 'public' } }],
+}
+const playlist = (id, publishedAt, extra = {}) => ({
+	id,
+	snippet: { title: `Canino FM | ${id}`, publishedAt },
+	status: { privacyStatus: 'public' },
+	contentDetails: { itemCount: 6 },
+	...extra,
+})
+/** Routes a stubbed fetch by endpoint, so the three calls can be answered independently. */
+const route = ({ uploads, videos, playlists }) => async (url) => {
+	if (url.includes('/playlistItems')) return uploads()
+	if (url.includes('/videos')) return videos()
+	return playlists ? playlists() : json({ items: [] })
+}
 const liveVideos = {
 	items: [{ id: 'vid1vid1vid', snippet: { liveBroadcastContent: 'live' }, status: { embeddable: true, privacyStatus: 'public' } }],
 }
@@ -303,4 +319,90 @@ test('non-GET is rejected, including a request with no method', async () => {
 		assert.equal(res.status, 405)
 		assert.equal(res.headers.get('allow'), 'GET')
 	}
+})
+
+// --- the offline archive --------------------------------------------------
+//
+// While off air the page offers the last broadcast's playlist. It is decoration:
+// liveness is the contract, so nothing here may change `live`.
+
+test('off air, the newest public playlist is offered', async () => {
+	await withFetch(
+		route({
+			uploads: () => json(livePlaylist),
+			videos: () => json(idleVideos),
+			playlists: () =>
+				json({
+					items: [
+						playlist('PLoldoldold01', '2026-11-01T18:00:00Z'),
+						playlist('PLnewestnew01', '2026-11-15T18:00:00Z'),
+						playlist('PLmiddlemid01', '2026-11-08T18:00:00Z'),
+					],
+				}),
+		}),
+		async (calls) => {
+			const body = await read(await (await freshHandler())({ method: 'GET' }))
+			assert.equal(body.live, false)
+			// Picked by publishedAt, not by position: the API does not promise an order.
+			assert.deepEqual(body.archive, { id: 'PLnewestnew01', title: 'Canino FM | PLnewestnew01' })
+			assert.equal(calls.length, 3)
+		},
+	)
+})
+
+test('a failed archive lookup still answers the question it was asked', async () => {
+	// The whole point: `live` is the contract and the archive is not. A 500 here must not
+	// turn a correct `false` into `null`, which would leave the hero holding a stale state.
+	for (const fail of [
+		() => new Response('boom', { status: 500 }),
+		() => new Response('<html>', { status: 200 }),
+		() => { throw new Error('network') },
+		() => json({ items: [] }),
+	]) {
+		await withFetch(
+			route({ uploads: () => json(livePlaylist), videos: () => json(idleVideos), playlists: fail }),
+			async () => {
+				const body = await read(await (await freshHandler())({ method: 'GET' }))
+				assert.equal(body.live, false, 'an archive failure must not change the verdict')
+				assert.equal(body.archive, undefined)
+			},
+		)
+	}
+})
+
+test('unusable playlists are skipped', async () => {
+	const unusable = {
+		items: [
+			playlist('PLprivatepr01', '2026-11-15T18:00:00Z', { status: { privacyStatus: 'private' } }),
+			// An empty playlist embeds as an error panel — worse than the plain offline card.
+			playlist('PLemptyempt01', '2026-11-14T18:00:00Z', { contentDetails: { itemCount: 0 } }),
+			// Anything that is not a plausible id is never interpolated into an embed URL.
+			playlist('../../evil', '2026-11-13T18:00:00Z'),
+			playlist('PLgoodgoodgd01', '2026-11-01T18:00:00Z'),
+		],
+	}
+	await withFetch(
+		route({ uploads: () => json(livePlaylist), videos: () => json(idleVideos), playlists: () => json(unusable) }),
+		async () => {
+			const body = await read(await (await freshHandler())({ method: 'GET' }))
+			assert.equal(body.archive.id, 'PLgoodgoodgd01')
+		},
+	)
+})
+
+test('while live, no archive is fetched', async () => {
+	// It would buy nothing — the page is embedding the broadcast — and it costs a unit.
+	await withFetch(
+		route({
+			uploads: () => json(livePlaylist),
+			videos: () => json(liveVideos),
+			playlists: () => assert.fail('must not look up an archive while live'),
+		}),
+		async (calls) => {
+			const body = await read(await (await freshHandler())({ method: 'GET' }))
+			assert.equal(body.live, true)
+			assert.equal(body.archive, undefined)
+			assert.equal(calls.length, 2)
+		},
+	)
 })

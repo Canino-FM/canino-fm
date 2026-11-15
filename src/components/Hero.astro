@@ -52,7 +52,7 @@ const liveEmbedSrc = `https://www.youtube-nocookie.com/embed/live_stream?channel
 				/>
 			) : (
 				/* Built offline: the page is static, so live state is resolved in the browser. */
-				<div class="video__live" data-live-src={liveEmbedSrc} data-embed-base="https://www.youtube-nocookie.com/embed/" data-player-params={playerParams}>
+				<div class="video__live" data-live-src={liveEmbedSrc} data-embed-base="https://www.youtube-nocookie.com/embed/" data-playlist-base="https://www.youtube-nocookie.com/embed/videoseries?list=" data-player-params={playerParams}>
 					<p class="video__offline">Offline</p>
 				</div>
 			)
@@ -79,6 +79,7 @@ const liveEmbedSrc = `https://www.youtube-nocookie.com/embed/live_stream?channel
 		const fallbackSrc = src
 		const embedBase = mount.getAttribute('data-embed-base') ?? ''
 		const playerParams = mount.getAttribute('data-player-params') ?? ''
+		const playlistBase = mount.getAttribute('data-playlist-base') ?? ''
 
 		const POLL_MS = 60_000
 		const REQUEST_TIMEOUT_MS = 10_000
@@ -105,6 +106,8 @@ const liveEmbedSrc = `https://www.youtube-nocookie.com/embed/live_stream?channel
 		let showingLive = false
 		/** The video in the iframe. Shows are separate broadcasts, so this changes hourly. */
 		let shownVideoId: string | null = null
+		/** The archive playlist in the iframe while off air; changes once a week. */
+		let shownPlaylistId: string | null = null
 		let offlineReadings = 0
 		let unknownReadings = 0
 		let inFlight = false
@@ -122,18 +125,62 @@ const liveEmbedSrc = `https://www.youtube-nocookie.com/embed/live_stream?channel
 			showingLive = true
 		}
 
-		function showOffline() {
-			const p = document.createElement('p')
-			p.className = 'video__offline'
-			p.textContent = 'Offline'
-			liveMount.replaceChildren(p)
+		/**
+		 * Off air. With an archive playlist we offer the last broadcast rather than an empty
+		 * box; without one we keep the plain card.
+		 *
+		 * Deliberately NOT autoplaying, unlike the live embed. A live stream a viewer came
+		 * for is one thing; an archive that starts talking on every page load is another, and
+		 * it would load and play third-party media before anyone asked for it.
+		 */
+		function showOffline(archive: Archive | null) {
 			showingLive = false
 			shownVideoId = null
+			shownPlaylistId = archive?.id ?? null
+
+			const label = document.createElement('p')
+			label.className = 'video__offline'
+
+			if (!archive) {
+				label.textContent = 'Offline'
+				liveMount.replaceChildren(label)
+				return
+			}
+
+			// Titles follow "Canino FM | 15 November 2026", but they drift — a missing space
+			// or a renamed show must not produce a broken label, so an unparseable title just
+			// loses the date rather than the whole line.
+			const date = archive.title.split('|').pop()?.trim()
+			label.textContent = date ? `Offline — last broadcast, ${date}` : 'Offline — last broadcast'
+
+			const iframe = document.createElement('iframe')
+			iframe.src = `${playlistBase}${encodeURIComponent(archive.id)}?playsinline=1`
+			iframe.title = 'Canino FM — last broadcast'
+			iframe.allow =
+				'accelerometer; clipboard-write; encrypted-media; gyroscope; picture-in-picture; web-share'
+			iframe.referrerPolicy = 'strict-origin-when-cross-origin'
+			iframe.allowFullscreen = true
+
+			liveMount.replaceChildren(label, iframe)
+		}
+
+		interface Archive {
+			id: string
+			title: string
 		}
 
 		interface Status {
 			live: boolean | null
 			videoId: string | null
+			archive: Archive | null
+		}
+
+		/** Ignores anything that is not a usable pair, so a shape change cannot reach an src. */
+		function readArchive(value: unknown): Archive | null {
+			if (!value || typeof value !== 'object') return null
+			const { id, title } = value as { id?: unknown; title?: unknown }
+			if (typeof id !== 'string' || !id) return null
+			return { id, title: typeof title === 'string' ? title : '' }
 		}
 
 		/** `live` is true, false, or null for "could not tell". Never throws. */
@@ -146,18 +193,18 @@ const liveEmbedSrc = `https://www.youtube-nocookie.com/embed/live_stream?channel
 					// Without this, a function that failed to deploy is completely silent: the
 					// page polls a 404 forever and shows Offline, with nothing logged anywhere.
 					console.warn('[live-status] request failed:', res.status, res.statusText)
-					return { live: null, videoId: null }
+					return { live: null, videoId: null, archive: null }
 				}
 				const payload = await res.json()
 				if (typeof payload?.live === 'boolean') {
 					const id = typeof payload.videoId === 'string' ? payload.videoId : null
-					return { live: payload.live, videoId: id }
+					return { live: payload.live, videoId: id, archive: readArchive(payload.archive) }
 				}
 				console.warn('[live-status] indeterminate:', payload?.reason ?? payload)
-				return { live: null, videoId: null }
+				return { live: null, videoId: null, archive: null }
 			} catch (error) {
 				console.warn('[live-status] unreachable:', error)
-				return { live: null, videoId: null }
+				return { live: null, videoId: null, archive: null }
 			}
 		}
 
@@ -168,8 +215,9 @@ const liveEmbedSrc = `https://www.youtube-nocookie.com/embed/live_stream?channel
 			inFlight = true
 			let live: boolean | null
 			let videoId: string | null = null
+			let archive: Archive | null = null
 			try {
-				;({ live, videoId } = await readStatus())
+				;({ live, videoId, archive } = await readStatus())
 			} finally {
 				inFlight = false
 			}
@@ -178,7 +226,7 @@ const liveEmbedSrc = `https://www.youtube-nocookie.com/embed/live_stream?channel
 				unknownReadings += 1
 				if (showingLive && unknownReadings >= UNKNOWN_READINGS_BEFORE_FALLBACK) {
 					unknownReadings = 0
-					showOffline()
+					showOffline(null)
 				}
 				return
 			}
@@ -193,10 +241,19 @@ const liveEmbedSrc = `https://www.youtube-nocookie.com/embed/live_stream?channel
 			}
 
 			offlineReadings += 1
-			if (showingLive && offlineReadings >= OFFLINE_READINGS_BEFORE_TEARDOWN) {
-				offlineReadings = 0
-				showOffline()
+			if (showingLive) {
+				if (offlineReadings >= OFFLINE_READINGS_BEFORE_TEARDOWN) {
+					offlineReadings = 0
+					showOffline(archive)
+				}
+				return
 			}
+
+			// Already off air. Render only when the playlist actually changes — once a week —
+			// so a poll cannot restart an archive the viewer is part-way through. A lookup
+			// that comes back empty leaves whatever is on screen alone, rather than tearing
+			// down a working embed over a transient failure.
+			if (archive && archive.id !== shownPlaylistId) showOffline(archive)
 		}
 
 		refresh()
