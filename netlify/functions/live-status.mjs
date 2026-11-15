@@ -18,7 +18,8 @@
  *   true   a public, embeddable video on the channel is live right now; the payload
  *          carries its `videoId`, which is what the page embeds (see below)
  *   false  both calls parsed cleanly and none of the CANDIDATE_COUNT newest uploads
- *          is a public embeddable live stream
+ *          is a public embeddable live stream; the payload may also carry an
+ *          `archive` playlist for the page to offer instead of nothing
  *   null   we could not tell — plus a `reason`, and a `detail` on the throw path
  *
  * `false` is a claim, not a default. Every failure — missing key, non-2xx, exhausted
@@ -98,6 +99,12 @@ const MEMO_MS = 25_000
 
 /** Shape of a YouTube video id; it is interpolated into an embed URL, so it is checked. */
 const VIDEO_ID = /^[A-Za-z0-9_-]{11}$/
+
+/** Likewise for a playlist id, which the offline hero interpolates into an embed URL. */
+const PLAYLIST_ID = /^[A-Za-z0-9_-]{12,64}$/
+
+/** How many playlists to look at when picking the newest. One quota unit either way. */
+const PLAYLIST_SCAN = 10
 
 /**
  * Reads candidate video ids out of a `playlistItems.list` body.
@@ -233,6 +240,10 @@ const playlistUrl = () =>
 	`&playlistId=${encodeURIComponent(UPLOADS_PLAYLIST_ID)}` +
 	`&maxResults=${CANDIDATE_COUNT}`
 
+const playlistsUrl = () =>
+	`${API_ROOT}/playlists?part=snippet,status,contentDetails` +
+	`&channelId=${encodeURIComponent(CHANNEL_ID)}&maxResults=${PLAYLIST_SCAN}`
+
 const videosUrl = (ids) =>
 	// Each id is encoded individually so the separating commas reach YouTube literally.
 	// `encodeURIComponent(ids.join(','))` sends `aaa%2Cbbb` — one nonexistent id, which
@@ -246,6 +257,43 @@ const videosUrl = (ids) =>
  */
 async function findCandidateIds(signal) {
 	return readCandidateIds(await getJson(playlistUrl(), signal))
+}
+
+/**
+ * The newest public playlist on the channel, for the page to offer while we are off air.
+ *
+ * Best-effort by construction: it returns null on any problem and never throws. An
+ * archive is decoration — liveness is the contract. Letting a failure here propagate
+ * would turn a correct `false` into `null`, which would leave the hero holding a stale
+ * state over a question this lookup has no business answering.
+ *
+ * Playlists are not documented to come back in any particular order, so the newest is
+ * chosen by `publishedAt` rather than by taking the first.
+ */
+async function latestArchive(signal) {
+	try {
+		const body = await getJson(playlistsUrl(), signal)
+		const items = Array.isArray(body?.items) ? body.items : []
+
+		const usable = items.filter(
+			(p) =>
+				typeof p?.id === 'string' &&
+				PLAYLIST_ID.test(p.id) &&
+				p?.status?.privacyStatus === 'public' &&
+				// An empty playlist embeds as an error panel, which is worse than the plain
+				// offline card it would replace.
+				(p?.contentDetails?.itemCount ?? 0) > 0 &&
+				typeof p?.snippet?.publishedAt === 'string',
+		)
+		if (!usable.length) return null
+
+		const newest = usable.reduce((a, b) =>
+			Date.parse(b.snippet.publishedAt) > Date.parse(a.snippet.publishedAt) ? b : a,
+		)
+		return { id: newest.id, title: newest.snippet.title ?? '' }
+	} catch {
+		return null
+	}
 }
 
 async function readLiveStatus() {
@@ -264,7 +312,16 @@ async function readLiveStatus() {
 		return { live: null, reason: candidates.reason ?? 'shape_playlist' }
 	}
 
-	return classifyVideos(await getJson(videosUrl(candidates.ids), signal))
+	const verdict = classifyVideos(await getJson(videosUrl(candidates.ids), signal))
+
+	// Only when we are off air: while live the page embeds the broadcast, so the extra
+	// quota unit would buy nothing.
+	if (verdict.live === false) {
+		const archive = await latestArchive(signal)
+		if (archive) return { ...verdict, archive }
+	}
+
+	return verdict
 }
 
 let memo = null
