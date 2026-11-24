@@ -8,6 +8,18 @@ interface Props {
 const { settings } = Astro.props
 const aboutHtml = settings.about?.trim() ?? ''
 const contactEmail = settings.contact?.trim() ?? ''
+
+/*
+ * The Submit block appears only while `submitUrl` holds an http(s) link, so clearing that
+ * one field in Studio closes the call without a deploy. The scheme is checked again here
+ * because Sanity's `url` validation runs in the Studio form, not on values written through
+ * the API — and an anchor href is one of the places where a `javascript:` value would run.
+ */
+const submitUrl = settings.submitUrl?.trim() ?? ''
+const submitHref = /^https?:\/\//i.test(submitUrl) ? submitUrl : ''
+const submitTitle = settings.submitTitle?.trim() || 'Submit'
+const submitText = settings.submitText?.trim() ?? ''
+const submitLabel = settings.submitLabel?.trim() || 'Open the form'
 ---
 
 <div class="about">
@@ -20,6 +32,26 @@ const contactEmail = settings.contact?.trim() ?? ''
 					<li class="item">{contactEmail}</li>
 				</ul>
 			</div>
+			{
+				submitHref ? (
+					<div class="block submit">
+						<p class="label">{submitTitle}</p>
+						{submitText ? <p class="submit__text">{submitText}</p> : null}
+						<ul class="list">
+							<li class="item">
+								<a
+									class="submit__link"
+									href={submitHref}
+									target="_blank"
+									rel="noopener noreferrer"
+								>
+									{submitLabel}
+								</a>
+							</li>
+						</ul>
+					</div>
+				) : null
+			}
 			<div class="block social">
 				<p class="label">Follow</p>
 				<ul class="list">
@@ -189,6 +221,22 @@ const contactEmail = settings.contact?.trim() ?? ''
 
 	.about .credits .item:last-child {
 		margin: 0;
+	}
+
+	.about .credits .submit__text {
+		margin-bottom: calc(14 / 1920 * 100vw);
+	}
+
+	@media (max-width: 767px) {
+		.about .credits .submit__text {
+			margin-bottom: calc(8 / 375 * 100vw);
+		}
+	}
+
+	/* The only call to action in a panel where every other link is plain text. */
+	.about .credits .submit__link {
+		text-decoration: underline;
+		text-underline-offset: 0.2em;
 	}
 
 	body.show-about .about {

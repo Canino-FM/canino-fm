@@ -20,6 +20,10 @@ export interface SettingsDoc {
 	contact?: string
 	live?: string
 	link?: string
+	submitUrl?: string
+	submitTitle?: string
+	submitText?: string
+	submitLabel?: string
 }
 
 interface ArtistRef {
@@ -84,7 +88,7 @@ const programQuery = `*[_type == "program"][0]{
 }`
 
 const settingsQuery = `*[_type == "settings"][0]{
-  about, contact, live, link
+  about, contact, live, link, submitUrl, submitTitle, submitText, submitLabel
 }`
 
 const eventsQuery = `*[_type == "event"]{

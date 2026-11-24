@@ -36,5 +36,31 @@ export const settings = defineType({
       type: 'url',
       description: 'Alternative: YouTube iframe URL or embed URL. Parsed for src at build time.',
     }),
+    defineField({
+      name: 'submitUrl',
+      title: 'Submit — form link',
+      type: 'url',
+      description:
+        'Link to the submission form. The Submit block in the About panel is shown only while this is set, so clearing it closes the call without a deploy.',
+    }),
+    defineField({
+      name: 'submitTitle',
+      title: 'Submit — heading',
+      type: 'string',
+      description: 'Heading for the block, e.g. "Propose a show". Falls back to "Submit".',
+    }),
+    defineField({
+      name: 'submitText',
+      title: 'Submit — description',
+      type: 'text',
+      description:
+        'A line or two saying who the form is for and what happens after you send it. Optional.',
+    }),
+    defineField({
+      name: 'submitLabel',
+      title: 'Submit — link text',
+      type: 'string',
+      description: 'Text of the link itself. Falls back to "Open the form".',
+    }),
   ],
 })
